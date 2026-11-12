@@ -123,7 +123,7 @@ export function renderfolderview() {
 
   const rootcrumb = document.createElement('span')
   rootcrumb.className = `breadcrumb-crumb ${!state.currentfolder ? 'active' : ''}`
-  rootcrumb.textContent = 'notes'
+  rootcrumb.textContent = 'vault'
   rootcrumb.addEventListener('click', () => navigatefolder(''))
   trail.appendChild(rootcrumb)
 

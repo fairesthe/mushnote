@@ -5,7 +5,7 @@ server:
 
 # vault folder configuration --------------------
 vault:
-  path: notes
+  path: vault
 
 # history folder configuration --------------------
 history:

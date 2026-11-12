@@ -33,13 +33,14 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }))
 const frontenddir = path.join(rootdir, 'frontend')
 const resourcesdir = path.join(rootdir, 'resources')
 const iconsdir = path.join(resourcesdir, 'icons')
-const notesavatarsdir = path.join(vaultdir, 'avatars')
+const vaultavatarsdir = path.join(vaultdir, 'avatars')
 const resourcesavatarsdir = path.join(resourcesdir, 'avatars')
 
-// serve avatars directly from notes/avatars and resources without /resources prefix --------------------
-if (fs.existsSync(notesavatarsdir)) {
-  app.use('/avatars', express.static(notesavatarsdir))
-  app.use('/notes/avatars', express.static(notesavatarsdir))
+// serve avatars directly from vault/avatars and resources without /resources prefix --------------------
+if (fs.existsSync(vaultavatarsdir)) {
+  app.use('/avatars', express.static(vaultavatarsdir))
+  app.use('/vault/avatars', express.static(vaultavatarsdir))
+  app.use('/notes/avatars', express.static(vaultavatarsdir))
 }
 if (fs.existsSync(resourcesavatarsdir)) {
   app.use('/avatars', express.static(resourcesavatarsdir))

@@ -75,6 +75,8 @@ export function formatavatarurl(avatar) {
     cleaned = cleaned.replace('/resources/avatars/', '/avatars/')
   } else if (cleaned.startsWith('/resources/')) {
     cleaned = cleaned.replace('/resources/', '/avatars/')
+  } else if (cleaned.startsWith('/vault/avatars/')) {
+    cleaned = cleaned.replace('/vault/avatars/', '/avatars/')
   } else if (cleaned.startsWith('/notes/avatars/')) {
     cleaned = cleaned.replace('/notes/avatars/', '/avatars/')
   } else if (!cleaned.startsWith('/') && !cleaned.startsWith('http')) {
