@@ -1,9 +1,10 @@
 import { api } from './api.js'
 import { state } from './state.js'
 import { loadnotes, navigatefolder } from './files.js'
-import { opennote, closenote, saveworkspacestate } from './editor.js'
+import { opennote, closenote, saveworkspacestate, marksessioncreated, opennotelink, isexternalurl } from './editor.js'
 import { rendertabs, closetab } from './tabs.js'
 import { updatetogglebuttons } from './layout.js'
+import { renderchatmarkdown } from './tiptap.bundle.js'
 
 // dom elements for ai assistant --------------------
 const aidrawer = document.getElementById('ai-drawer')
@@ -333,8 +334,17 @@ export function formattoolmeta(call) {
     }
   }
 
-  if (name === 'note_open') {
-    const filename = args.note_id || 'note'
+  if (name === 'file_outline') {
+    const filename = args.path || args.file_path || args.note_id || 'file'
+    return {
+      icon: '📑',
+      label: `outline of ${filename}`,
+      colorclass: 'tool-badge-view'
+    }
+  }
+
+  if (name === 'file_open') {
+    const filename = args.path || args.file_path || args.note_id || 'file'
     const sectioninfo = args.heading ? ` (${args.heading})` : (args.start_line ? ` (lines ${args.start_line}+)` : '')
     return {
       icon: '👁',
@@ -343,8 +353,8 @@ export function formattoolmeta(call) {
     }
   }
 
-  if (name === 'note_edit_diff') {
-    const filename = args.note_id || 'note'
+  if (name === 'file_edit_diff') {
+    const filename = args.path || args.file_path || args.note_id || 'file'
     const count = Array.isArray(args.edits) ? ` (${args.edits.length} edits)` : ''
     return {
       icon: '✏️',
@@ -353,8 +363,8 @@ export function formattoolmeta(call) {
     }
   }
 
-  if (name === 'note_create') {
-    const filename = args.note_id || args.title || 'note'
+  if (name === 'file_create') {
+    const filename = args.path || args.filename || args.title || args.note_id || 'file'
     return {
       icon: '📝',
       label: `created ${filename}`,
@@ -362,8 +372,8 @@ export function formattoolmeta(call) {
     }
   }
 
-  if (name === 'note_open_for_user') {
-    const filename = args.note_id || 'note'
+  if (name === 'file_open_for_user') {
+    const filename = args.path || args.file_path || args.note_id || 'file'
     return {
       icon: '📂',
       label: `opened ${filename}`,
@@ -371,7 +381,7 @@ export function formattoolmeta(call) {
     }
   }
 
-  if (name === 'note_search') {
+  if (name === 'file_search') {
     const query = args.query ? `"${args.query}"` : 'vault'
     return {
       icon: '🔍',
@@ -380,16 +390,16 @@ export function formattoolmeta(call) {
     }
   }
 
-  if (name === 'note_list_recent') {
+  if (name === 'file_list_recent') {
     return {
       icon: '⏱',
-      label: 'checked recent notes',
+      label: 'checked recent files',
       colorclass: 'tool-badge-search'
     }
   }
 
-  if (name === 'note_history') {
-    const filename = args.note_id || 'note'
+  if (name === 'file_history') {
+    const filename = args.path || args.file_path || args.note_id || 'file'
     return {
       icon: '📜',
       label: `checked history of ${filename}`,
@@ -397,7 +407,7 @@ export function formattoolmeta(call) {
     }
   }
 
-  if (name === 'note_move') {
+  if (name === 'file_move') {
     const src = args.source || 'item'
     const dest = args.destination || 'destination'
     return {
@@ -407,7 +417,7 @@ export function formattoolmeta(call) {
     }
   }
 
-  if (name === 'note_copy') {
+  if (name === 'file_copy') {
     const src = args.source || 'item'
     const dest = args.destination || 'destination'
     return {
@@ -417,8 +427,8 @@ export function formattoolmeta(call) {
     }
   }
 
-  if (name === 'note_delete') {
-    const filename = args.note_id || 'note'
+  if (name === 'file_delete') {
+    const filename = args.path || args.file_path || args.note_id || 'file'
     return {
       icon: '🗑️',
       label: `deleted ${filename}`,
@@ -455,47 +465,47 @@ export function formatnonadmintooltext(call) {
   const name = call.name
   const args = call.args || {}
 
-  if (name === 'note_open') {
-    const filename = args.note_id || 'note'
-    return `reading ${filename}...`
+  if (name === 'file_create') {
+    const filename = args.path || args.filename || args.title || args.note_id
+    return filename && filename !== 'file' ? `creating ${filename}...` : 'creating a file...'
   }
-  if (name === 'note_outline') {
-    const filename = args.note_id || 'note'
-    return `reading outline of ${filename}...`
+  if (name === 'file_open') {
+    const filename = args.path || args.file_path || args.note_id
+    return filename && filename !== 'file' ? `reading ${filename}...` : 'reading a file...'
   }
-  if (name === 'note_search') {
-    return args.query ? `searching notes for "${args.query}"...` : 'searching notes...'
+  if (name === 'file_outline') {
+    const filename = args.path || args.file_path || args.note_id
+    return filename && filename !== 'file' ? `reading outline of ${filename}...` : 'checking outline...'
   }
-  if (name === 'note_edit_diff') {
-    const filename = args.note_id || 'note'
-    return `editing ${filename}...`
+  if (name === 'file_search') {
+    return args.query ? `searching files for "${args.query}"...` : 'searching files...'
   }
-  if (name === 'note_create') {
-    const filename = args.title || args.note_id || 'note'
-    return `creating ${filename}...`
+  if (name === 'file_edit_diff') {
+    const filename = args.path || args.file_path || args.note_id
+    return filename && filename !== 'file' ? `editing ${filename}...` : 'editing file...'
   }
-  if (name === 'note_open_for_user') {
-    const filename = args.note_id || 'note'
-    return `opening ${filename}...`
+  if (name === 'file_open_for_user') {
+    const filename = args.path || args.file_path || args.note_id
+    return filename && filename !== 'file' ? `opening ${filename}...` : 'opening file...'
   }
-  if (name === 'note_list_recent') {
-    return 'checking recent notes...'
+  if (name === 'file_list_recent') {
+    return 'checking recent files...'
   }
-  if (name === 'note_history') {
-    const filename = args.note_id || 'note'
-    return `reading history of ${filename}...`
+  if (name === 'file_history') {
+    const filename = args.path || args.file_path || args.note_id
+    return filename && filename !== 'file' ? `reading history of ${filename}...` : 'checking file history...'
   }
-  if (name === 'note_move') {
+  if (name === 'file_move') {
     const src = args.source || 'item'
     return `moving ${src}...`
   }
-  if (name === 'note_copy') {
+  if (name === 'file_copy') {
     const src = args.source || 'item'
     return `copying ${src}...`
   }
-  if (name === 'note_delete') {
-    const filename = args.note_id || 'note'
-    return `deleting ${filename}...`
+  if (name === 'file_delete') {
+    const filename = args.path || args.file_path || args.note_id
+    return filename && filename !== 'file' ? `deleting ${filename}...` : 'deleting file...'
   }
   if (name === 'folder_delete') {
     const foldername = args.folder_path || 'folder'
@@ -505,7 +515,7 @@ export function formatnonadmintooltext(call) {
   if (name === 'user_profile_update') {
     return 'updating profile...'
   }
-  return `using ${name}...`
+  return 'working...'
 }
 
 // create smooth collapsible widget --------------------
@@ -601,6 +611,85 @@ export function appendcopyactions(msgel, texttocopy) {
   msgel.appendChild(actionswrap)
 }
 
+// attach copy button under code blocks and latex math in chat --------------------
+export function attachblockcopyactions(bubbleel) {
+  if (!bubbleel) return
+
+  // attach copy button under code blocks --------------------
+  const preblocks = bubbleel.querySelectorAll('pre')
+  preblocks.forEach(pre => {
+    if (pre.dataset.hasCopy) return
+    pre.dataset.hasCopy = 'true'
+
+    const actions = document.createElement('div')
+    actions.className = 'chat-block-actions'
+
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'btn-copy-code'
+    btn.title = 'copy code'
+    btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> <span>copy</span>`
+
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const code = pre.querySelector('code') ? pre.querySelector('code').textContent : pre.textContent
+      try {
+        await navigator.clipboard.writeText(code)
+        btn.innerHTML = `<span class="copy-success-text">copied</span>`
+        setTimeout(() => {
+          btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> <span>copy</span>`
+        }, 1000)
+      } catch (err) {
+        console.error('failed to copy code', err)
+      }
+    })
+
+    actions.appendChild(btn)
+    pre.insertAdjacentElement('afterend', actions)
+  })
+
+  // attach copy button under latex math blocks --------------------
+  const mathblocks = bubbleel.querySelectorAll('.katex-block, .katex-display')
+  const targetblocks = []
+  mathblocks.forEach(mb => {
+    if (mb.matches('.katex-display') && mb.closest('.katex-block')) return
+    targetblocks.push(mb)
+  })
+
+  targetblocks.forEach(mb => {
+    if (mb.dataset.hasCopy) return
+    mb.dataset.hasCopy = 'true'
+
+    const ann = mb.querySelector('annotation[encoding="application/x-tex"]')
+    const latextext = ann ? ann.textContent.trim() : mb.textContent.trim()
+
+    const actions = document.createElement('div')
+    actions.className = 'chat-block-actions'
+
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'btn-copy-code'
+    btn.title = 'copy latex'
+    btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> <span>copy latex</span>`
+
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      try {
+        await navigator.clipboard.writeText(latextext)
+        btn.innerHTML = `<span class="copy-success-text">copied</span>`
+        setTimeout(() => {
+          btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> <span>copy latex</span>`
+        }, 1000)
+      } catch (err) {
+        console.error('failed to copy latex', err)
+      }
+    })
+
+    actions.appendChild(btn)
+    mb.insertAdjacentElement('afterend', actions)
+  })
+}
+
 // fade and remove non-admin activity status node --------------------
 function cleanactivitystatus(node, delay = 800) {
   if (!node) return
@@ -657,9 +746,11 @@ export async function senduserprompt(text) {
     attachmenthtml += '</div>'
   }
 
-  const textdisplay = prompt ? `<div class="msg-bubble">${prompt}</div>` : ''
+  const textdisplay = prompt ? `<div class="msg-bubble rendered-md">${renderchatmarkdown(prompt)}</div>` : ''
   usermsg.innerHTML = `${attachmenthtml}${textdisplay}`
   appendcopyactions(usermsg, prompt || (attached.length ? attached.map(a => a.name).join(', ') : ''))
+  const userbubble = usermsg.querySelector('.msg-bubble')
+  if (userbubble) attachblockcopyactions(userbubble)
   aimessages.appendChild(usermsg)
 
   const detailed = isdetailedview()
@@ -741,6 +832,7 @@ export async function senduserprompt(text) {
       return str.replace(/<\/?[a-zA-Z0-9_\-:]+(?:\s+[^>]*)?>/gi, '').replace(/<[a-zA-Z0-9_\-:]*$/i, '')
     }
 
+    let rawreplytext = ''
     let pendingreplytext = ''
     let replydebouncetimer = null
 
@@ -750,7 +842,9 @@ export async function senduserprompt(text) {
         replydebouncetimer = setTimeout(() => {
           replydebouncetimer = null
           if (agentbubble && pendingreplytext) {
-            agentbubble.textContent = pendingreplytext
+            agentbubble.classList.add('rendered-md')
+            agentbubble.innerHTML = renderchatmarkdown(pendingreplytext)
+            attachblockcopyactions(agentbubble)
             aimessages.scrollTop = aimessages.scrollHeight
           }
         }, 75)
@@ -764,7 +858,9 @@ export async function senduserprompt(text) {
       }
       const cleantext = sanitizestreamtext(fulltext || pendingreplytext)
       if (agentbubble && cleantext) {
-        agentbubble.textContent = cleantext
+        agentbubble.classList.add('rendered-md')
+        agentbubble.innerHTML = renderchatmarkdown(cleantext)
+        attachblockcopyactions(agentbubble)
         aimessages.scrollTop = aimessages.scrollHeight
       }
     }
@@ -831,7 +927,12 @@ export async function senduserprompt(text) {
         }
 
         if (eventname === 'status') {
-          updatestatus(parsed.status || parsed.text || 'thinking...')
+          let statustext = parsed.status || parsed.text || 'thinking...'
+          if (statustext.startsWith('running ') || statustext.startsWith('using ')) {
+            const toolname = statustext.replace(/^(running|using)\s+/, '').replace(/\.\.\.$/, '')
+            statustext = formatnonadmintooltext({ name: toolname, args: {} })
+          }
+          updatestatus(statustext)
         } else if (eventname === 'thought') {
           if (detailed) {
             removestatus()
@@ -863,14 +964,21 @@ export async function senduserprompt(text) {
             agentmsg = document.createElement('div')
             agentmsg.className = 'ai-msg agent'
             agentbubble = document.createElement('div')
-            agentbubble.className = 'msg-bubble'
+            agentbubble.className = 'msg-bubble rendered-md'
             agentmsg.appendChild(agentbubble)
             aimessages.appendChild(agentmsg)
           }
-          const raw = parsed.full || (agentbubble.textContent + (parsed.delta || ''))
-          renderbufferedreply(raw)
+          rawreplytext = parsed.full || (rawreplytext + (parsed.delta || ''))
+          renderbufferedreply(rawreplytext)
         } else if (eventname === 'tool_call') {
           toolscollected.push(parsed)
+          if (agentmsg) {
+            agentmsg.remove()
+            agentmsg = null
+            agentbubble = null
+          }
+          rawreplytext = ''
+          pendingreplytext = ''
           if (!detailed) {
             const toolstatus = document.createElement('div')
             toolstatus.className = 'ai-activity-status'
@@ -959,23 +1067,27 @@ export async function senduserprompt(text) {
       // refresh notes tree in sidebar only so active editor view and animations are not interrupted --------------------
       await loadnotes()
 
-      // if ai generated a new note or opened a note for user open it in a new tab --------------------
+      // if ai generated a new file or opened a file for user open it in a new tab --------------------
       for (const call of finaltools) {
-        const isnewnote = call.name === 'note_create'
-        const isuseropen = call.name === 'note_open_for_user' || (call.name === 'note_open' && call.args?.open_in_tab)
-        let targetnoteid = call.args?.note_id
-        if (!targetnoteid && call.name === 'note_create') {
-          // fallback to parse note id from output --------------------
+        const isnewfile = call.name === 'file_create'
+        const isuseropen = call.name === 'file_open_for_user' || (call.name === 'file_open' && call.args?.open_in_tab)
+        let targetfileid = call.args?.path || call.args?.file_path || call.args?.note_id
+        if (!targetfileid && call.name === 'file_create') {
+          // fallback to parse file id from output --------------------
           const match = String(call.output || '').match(/\[(.*?)\]/)
-          if (match) targetnoteid = match[1]
+          if (match) targetfileid = match[1]
         }
-        if ((isnewnote || isuseropen) && targetnoteid) {
-          await opennote(targetnoteid, { newtab: true, force: true })
+        if (isnewfile && targetfileid) {
+          marksessioncreated(targetfileid)
+        }
+        if ((isnewfile || isuseropen) && targetfileid) {
+          await opennote(targetfileid, { newtab: true, force: true })
         }
 
-        // close tabs if note was deleted --------------------
-        if (call.name === 'note_delete' && call.args?.note_id) {
-          closetab(call.args.note_id)
+        // close tabs if file was deleted --------------------
+        if (call.name === 'file_delete') {
+          const delid = call.args?.path || call.args?.file_path || call.args?.note_id
+          if (delid) closetab(delid)
         }
 
         // close tabs and safely adjust folder view if folder was deleted --------------------
@@ -1001,8 +1113,8 @@ export async function senduserprompt(text) {
           }
         }
 
-        // update open tabs if note or folder was moved or renamed --------------------
-        if (call.name === 'note_move' && call.args) {
+        // update open tabs if file or folder was moved or renamed --------------------
+        if (call.name === 'file_move' && call.args) {
           const src = call.args.source
           const dest = call.args.destination
           const isfolder = call.args.move_type === 'folder'
@@ -1044,16 +1156,22 @@ export async function senduserprompt(text) {
 
     // flush buffered streams and render agent response --------------------
     flushbufferedthought(data.thought)
-    const finalreply = sanitizestreamtext(data.reply ?? (agentbubble ? agentbubble.textContent : ''))
+    const finalreply = sanitizestreamtext(data.reply ?? (rawreplytext || (agentbubble ? agentbubble.textContent : '')))
     flushbufferedreply(finalreply)
 
     if (!agentmsg) {
       agentmsg = document.createElement('div')
       agentmsg.className = 'ai-msg agent'
-      agentmsg.innerHTML = `<div class="msg-bubble">${finalreply || '(no response)'}</div>`
+      agentbubble = document.createElement('div')
+      agentbubble.className = 'msg-bubble rendered-md'
+      agentbubble.innerHTML = renderchatmarkdown(finalreply) || '(no response)'
+      attachblockcopyactions(agentbubble)
+      agentmsg.appendChild(agentbubble)
       aimessages.appendChild(agentmsg)
     } else if (agentbubble) {
-      agentbubble.textContent = finalreply || '(no response)'
+      agentbubble.classList.add('rendered-md')
+      agentbubble.innerHTML = renderchatmarkdown(finalreply) || '(no response)'
+      attachblockcopyactions(agentbubble)
     }
 
     // render interactive options chips if present --------------------
@@ -1254,11 +1372,9 @@ export function initassistant() {
     aiinput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
-        if (aiform) {
-          const prompt = aiinput.value?.trim() || ''
-          if (prompt || currentattachments.length > 0) {
-            senduserprompt(prompt)
-          }
+        const prompt = aiinput.value?.trim() || ''
+        if (prompt || currentattachments.length > 0) {
+          senduserprompt(prompt)
         }
       }
     })
@@ -1277,6 +1393,56 @@ export function initassistant() {
       if (files.length > 0) {
         handlefileupload(files)
       }
+    })
+  }
+
+  // click note links in chat messages --------------------
+  if (aimessages) {
+    aimessages.addEventListener('click', (e) => {
+      const link = e.target.closest('a')
+      if (!link) return
+
+      const notetarget = link.dataset.noteLink || link.getAttribute('data-note-link')
+      const href = link.getAttribute('href')
+      const target = notetarget || href
+      if (!target) return
+
+      if (isexternalurl(target)) {
+        return
+      }
+
+      e.preventDefault()
+      e.stopPropagation()
+      opennotelink(target, { newtab: false })
+    })
+
+    aimessages.addEventListener('contextmenu', (e) => {
+      const link = e.target.closest('a')
+      if (!link) return
+
+      const notetarget = link.dataset.noteLink || link.getAttribute('data-note-link')
+      const href = link.getAttribute('href')
+      const target = notetarget || href
+      if (!target || isexternalurl(target)) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      opennotelink(target, { newtab: true })
+    })
+
+    aimessages.addEventListener('auxclick', (e) => {
+      if (e.button !== 1) return
+      const link = e.target.closest('a')
+      if (!link) return
+
+      const notetarget = link.dataset.noteLink || link.getAttribute('data-note-link')
+      const href = link.getAttribute('href')
+      const target = notetarget || href
+      if (!target || isexternalurl(target)) return
+
+      e.preventDefault()
+      e.stopPropagation()
+      opennotelink(target, { newtab: true })
     })
   }
 

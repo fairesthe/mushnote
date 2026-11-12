@@ -4,12 +4,13 @@ import fs from 'node:fs'
 import express from 'express'
 import { WebSocketServer } from 'ws'
 import { loadconfig, saveconfig, getvaultpath, gethistorypath, getrootdir } from './config.js'
-import { initvault, getnotepath, listnotes, readnote, deletenote, movenoteorfolder, createfolder, deletefolder, copynoteorfolder, initsystemnotes, readuserpreferences, updateuserpreferences } from './vault.js'
-import { inithistory, gethistory, getevents } from './history.js'
+import { initvault, getnotepath, listnotes, listfolders, readnote, deletenote, movenoteorfolder, createfolder, deletefolder, copynoteorfolder, getuniqueconflictpath, initsystemnotes, readuserpreferences, updateuserpreferences } from './vault.js'
+import { inithistory, gethistory, getevents, getnoteauthorship } from './history.js'
 import { getdoc, getdocifloaded, applydiff, handlesocket, migratedocentry } from './sync.js'
 import { verifypassword, setuserauth, createsession, getsession, extracttoken, formatavatarurl } from './auth.js'
 import { runagentchat } from './agent.js'
 import { initvaultwatcher } from './watcher.js'
+import { log, printbanner, requestlogger } from './logger.js'
 
 // configuration and initialization --------------------
 const config = loadconfig()
@@ -28,6 +29,7 @@ const host = config.server?.host || 'localhost'
 
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ extended: true, limit: '50mb' }))
+app.use(requestlogger)
 
 // serve static frontend and resources --------------------
 const frontenddir = path.join(rootdir, 'frontend')
@@ -35,6 +37,11 @@ const resourcesdir = path.join(rootdir, 'resources')
 const iconsdir = path.join(resourcesdir, 'icons')
 const vaultavatarsdir = path.join(vaultdir, 'avatars')
 const resourcesavatarsdir = path.join(resourcesdir, 'avatars')
+const katexdir = path.join(rootdir, 'backend', 'node_modules', 'katex', 'dist')
+
+if (fs.existsSync(katexdir)) {
+  app.use('/katex', express.static(katexdir))
+}
 
 // serve avatars directly from vault/avatars and resources without /resources prefix --------------------
 if (fs.existsSync(vaultavatarsdir)) {
@@ -49,6 +56,29 @@ app.use('/avatars', express.static(resourcesdir))
 
 app.use('/icons', express.static(iconsdir))
 app.use('/resources', express.static(resourcesdir))
+
+// serve media folder inside vault statically --------------------
+const vaultmediadir = path.join(vaultdir, 'media')
+if (!fs.existsSync(vaultmediadir)) {
+  fs.mkdirSync(vaultmediadir, { recursive: true })
+}
+app.use('/media', express.static(vaultmediadir))
+app.use('/vault/media', express.static(vaultmediadir))
+
+// serve vault files for browser preview and relative assets --------------------
+app.use('/preview', (req, res, next) => {
+  const rawpath = decodeURIComponent(req.path).replace(/^\/+/, '')
+  const normpath = path.normalize(rawpath).replace(/^(\.\.[\/\\])+/, '')
+  const fullpath = path.join(vaultdir, normpath)
+  if (!fullpath.startsWith(vaultdir)) {
+    return res.status(403).send('forbidden')
+  }
+  if (normpath.startsWith('system/') || normpath === 'system') {
+    return res.status(403).send('access to system folder is restricted')
+  }
+  express.static(vaultdir, { dotfiles: 'ignore' })(req, res, next)
+})
+
 app.use('/logo.png', (req, res) => res.sendFile(path.join(resourcesdir, 'logo.png')))
 app.use('/favicon.ico', (req, res) => res.sendFile(path.join(resourcesdir, 'logo.png')))
 app.use(express.static(frontenddir))
@@ -180,6 +210,7 @@ app.post('/api/auth/login', (req, res) => {
 
   const valid = verifypassword(password, user.auth)
   if (!valid) {
+    log.auth('failed', user_id, 'invalid credentials')
     return res.status(401).json({ error: 'invalid credentials' })
   }
 
@@ -196,6 +227,7 @@ app.post('/api/auth/login', (req, res) => {
     preferences: prefs
   }
   const token = createsession(userpayload)
+  log.auth('login', userid, `${displayname} signed in`)
   res.setHeader('Set-Cookie', `mushnote_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 60 * 60}`)
   res.json({
     status: 'ok',
@@ -408,7 +440,7 @@ app.post('/api/user/preferences', (req, res) => {
   res.json({ status: 'ok', preferences: updated, user })
 })
 
-// list all notes in vault respecting user permissions --------------------
+// list all notes and folders in vault respecting user permissions --------------------
 app.get('/api/notes', (req, res) => {
   const token = extracttoken(req)
   const session = getsession(token)
@@ -416,6 +448,7 @@ app.get('/api/notes', (req, res) => {
   const currentuser = session?.user_id
 
   let notes = listnotes(vaultdir)
+  let folders = listfolders(vaultdir)
   if (!isadmin) {
     notes = notes.filter(n => {
       if (!n.note_id.startsWith('system/')) {
@@ -425,9 +458,17 @@ app.get('/api/notes', (req, res) => {
       const folderuser = parts[1]
       return Boolean(currentuser && folderuser === currentuser)
     })
+    folders = folders.filter(f => {
+      if (!f.startsWith('system/')) {
+        return true
+      }
+      const parts = f.split('/')
+      const folderuser = parts[1]
+      return Boolean(currentuser && folderuser === currentuser)
+    })
   }
 
-  res.json({ notes })
+  res.json({ notes, folders })
 })
 
 // read single note supporting nested paths --------------------
@@ -441,6 +482,7 @@ app.get('/api/note', (req, res) => {
   if (!checksystemaccess(noteid, session)) {
     return res.status(403).json({ error: 'forbidden' })
   }
+
   const note = readnote(vaultdir, noteid)
   if (!note) {
     return res.status(404).json({ error: 'note not found' })
@@ -449,6 +491,11 @@ app.get('/api/note', (req, res) => {
   if (loadeddoc) {
     note.content = loadeddoc.getcontent()
   }
+  const authorship = getnoteauthorship(historydir, noteid)
+  note.last_author = authorship.last_author
+  note.created_by = authorship.created_by
+  note.created_time = authorship.created_time || (note.created_at ? new Date(note.created_at).getTime() : 0)
+  note.revision_count = authorship.revision_count
   res.json({ note })
 })
 
@@ -463,6 +510,7 @@ app.get('/api/raw', (req, res) => {
   if (!checksystemaccess(noteid, session)) {
     return res.status(403).json({ error: 'forbidden' })
   }
+
   const filepath = getnotepath(vaultdir, noteid)
   if (!fs.existsSync(filepath)) {
     return res.status(404).json({ error: 'file not found' })
@@ -486,6 +534,11 @@ app.get('/api/notes/:id', (req, res) => {
   if (loadeddoc) {
     note.content = loadeddoc.getcontent()
   }
+  const authorship = getnoteauthorship(historydir, noteid)
+  note.last_author = authorship.last_author
+  note.created_by = authorship.created_by
+  note.created_time = authorship.created_time || (note.created_at ? new Date(note.created_at).getTime() : 0)
+  note.revision_count = authorship.revision_count
   res.json({ note })
 })
 
@@ -493,11 +546,14 @@ app.get('/api/notes/:id', (req, res) => {
 app.post('/api/notes', (req, res) => {
   const token = extracttoken(req)
   const session = getsession(token)
-  const { note_id, title = '', content = '', author = 'wyatt' } = req.body
+  const { note_id, title = '', content = '', author = 'wyatt', create_unique = false } = req.body
   if (!note_id) {
     return res.status(400).json({ error: 'note_id is required' })
   }
-  if (!checksystemaccess(note_id, session)) {
+
+  const targetid = create_unique ? getuniqueconflictpath(vaultdir, note_id, false) : note_id
+
+  if (!checksystemaccess(targetid, session)) {
     return res.status(403).json({ error: 'forbidden' })
   }
 
@@ -505,14 +561,54 @@ app.post('/api/notes', (req, res) => {
     ? `# ${title}\n\n${content}`
     : content
 
-  const entry = getdoc(vaultdir, historydir, note_id)
+  const entry = getdoc(vaultdir, historydir, targetid)
+  if (entry.ytext.toString() === initialcontent) {
+    return res.json({ status: 'ok', note_id: targetid })
+  }
+
   entry.doc.transact(() => {
     entry.ytext.delete(0, entry.ytext.length)
     entry.ytext.insert(0, initialcontent)
   }, author)
 
   entry.flushtodisk(author)
-  res.status(201).json({ status: 'created', note_id })
+  log.note('save', targetid, `by ${author} (${initialcontent.length} chars)`)
+  res.status(201).json({ status: 'created', note_id: targetid })
+})
+
+// upload file into vault --------------------
+app.post('/api/upload', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!session) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+
+  const { path: filepath, data } = req.body
+  if (!filepath || !data) {
+    return res.status(400).json({ error: 'path and data are required' })
+  }
+
+  // sanitize path relative to vault and resolve conflict --------------------
+  const normpath = path.normalize(filepath).replace(/^(\.\.[\/\\])+/, '').replace(/\\/g, '/')
+  const uniquepath = getuniqueconflictpath(vaultdir, normpath, false)
+  const fullpath = path.join(vaultdir, uniquepath)
+  const dir = path.dirname(fullpath)
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+
+  // decode base64 buffer --------------------
+  const base64str = data.includes(',') ? data.split(',')[1] : data
+  const buffer = Buffer.from(base64str, 'base64')
+  fs.writeFileSync(fullpath, buffer)
+
+  log.note('upload', uniquepath, `saved ${buffer.length} bytes`)
+  res.json({
+    status: 'ok',
+    path: uniquepath,
+    url: '/' + uniquepath.replace(/\\/g, '/')
+  })
 })
 
 // edit note with diff --------------------
@@ -525,6 +621,7 @@ app.post('/api/notes/:id/diff', async (req, res) => {
 
   try {
     const updated = await applydiff(vaultdir, historydir, req.params.id, req.body)
+    log.note('diff', req.params.id, `by ${req.body?.author || 'agent'}`)
     res.json({ status: 'ok', content: updated })
   } catch (err) {
     res.status(400).json({ error: err.message })
@@ -572,6 +669,7 @@ app.delete('/api/note', (req, res) => {
   if (!deleted) {
     return res.status(404).json({ error: 'note not found' })
   }
+  log.note('delete', noteid, `by ${author}`)
   res.json({ status: 'deleted', note_id: noteid })
 })
 
@@ -586,6 +684,7 @@ app.delete('/api/notes/:id', (req, res) => {
   if (!deleted) {
     return res.status(404).json({ error: 'note not found' })
   }
+  log.note('delete', req.params.id, `by ${author}`)
   res.json({ status: 'deleted', note_id: req.params.id })
 })
 
@@ -604,6 +703,7 @@ app.post('/api/note/rename', (req, res) => {
   try {
     const result = movenoteorfolder(vaultdir, historydir, old_id, new_id, author)
     migratedocentry(result.source, result.destination, result.type === 'folder')
+    log.note('move', `${result.source} --> ${result.destination}`, `by ${author}`)
     res.json({ status: 'ok', source: result.source, destination: result.destination, type: result.type })
   } catch (err) {
     res.status(400).json({ error: err.message })
@@ -621,8 +721,10 @@ app.post('/api/folder', (req, res) => {
   if (!checksystemaccess(folder_path, session)) {
     return res.status(403).json({ error: 'forbidden' })
   }
+  const author = session?.user_id || 'user'
   try {
     const created = createfolder(vaultdir, folder_path)
+    log.vault('create', folder_path, `by ${author}`)
     res.status(201).json({ status: 'ok', folder: created })
   } catch (err) {
     res.status(400).json({ error: err.message })
@@ -646,6 +748,7 @@ app.delete('/api/folder', (req, res) => {
     if (!deleted) {
       return res.status(404).json({ error: 'folder not found' })
     }
+    log.vault('delete', folderpath, `by ${author}`)
     res.json({ status: 'deleted', folder: folderpath })
   } catch (err) {
     res.status(400).json({ error: err.message })
@@ -666,6 +769,7 @@ app.post('/api/note/copy', (req, res) => {
   const author = session?.user_id || 'user'
   try {
     const result = copynoteorfolder(vaultdir, historydir, source, destination, author)
+    log.note('copy', `${result.source} --> ${result.destination}`, `by ${author}`)
     res.json({ status: 'ok', ...result })
   } catch (err) {
     res.status(400).json({ error: err.message })
@@ -822,6 +926,12 @@ app.post('/api/agent/chat', async (req, res) => {
       onProgress: (event, data) => {
         if (event === 'chunk') {
           handlechunk(data.text)
+        } else if (event === 'tool_call') {
+          flushpendingtoken()
+          fulltext = ''
+          replyemitted = ''
+          pendingtokendata = null
+          sendevent('tool_call', data)
         } else {
           flushpendingtoken()
           sendevent(event, data)
@@ -905,9 +1015,8 @@ wss.on('connection', (ws, request) => {
 
 // start http and websocket server --------------------
 server.listen(port, host, () => {
-  console.log(`server running on http://${host}:${port}`)
-  console.log(`vault mounted at ${vaultdir}`)
-  console.log(`history mounted at ${historydir}`)
+  const asciipath = path.join(rootdir, 'resources', 'ascii.txt')
+  printbanner(port, host, vaultdir, historydir, asciipath)
 
   // watch vault directory for external file edits and sync live --------------------
   initvaultwatcher(vaultdir, historydir, wss)

@@ -1,6 +1,6 @@
-import { api, applytheme } from './api.js'
+import { api, applytheme, parsereadingscale } from './api.js'
 import { state } from './state.js'
-import { opennote } from './editor.js'
+import { opennote, refreshreadingscale } from './editor.js'
 
 // dom elements for sidebar settings --------------------
 const sidebarfilesview = document.getElementById('sidebar-files-view')
@@ -41,6 +41,9 @@ const settingsheading = document.getElementById('settings-heading')
 const formusersettings = document.getElementById('form-user-settings')
 const settingdisplayname = document.getElementById('setting-display-name')
 const settingavatarurl = document.getElementById('setting-avatar-url')
+const settingreadingscale = document.getElementById('setting-reading-scale')
+const settingreadingscaleval = document.getElementById('setting-reading-scale-val')
+const btnresetreadingscale = document.getElementById('btn-reset-reading-scale')
 const btnjumppersonalitysidebar = document.getElementById('btn-jump-personality-sidebar')
 
 const settingcoloruser = document.getElementById('setting-color-user')
@@ -231,6 +234,12 @@ async function loadusersettings(targetuserid) {
       settingavatarurl.value = cleanavatarurl(data.avatar || '')
     }
 
+    const rawscale = prefs['reading-scale']
+    const scale = parsereadingscale(rawscale)
+    const scalepercent = Math.round(scale * 100)
+    if (settingreadingscale) settingreadingscale.value = scalepercent
+    if (settingreadingscaleval) settingreadingscaleval.textContent = `${scalepercent}%`
+
     const ucolor = prefs['user-color'] || '#3b82f6'
     if (settingcoloruser) settingcoloruser.value = ucolor
     if (settingcoloruserhex) settingcoloruserhex.value = ucolor
@@ -301,6 +310,37 @@ export function initsidebarsettings() {
   syncpair(settingcolorbg, settingcolorbghex)
   syncpair(settingcolortext, settingcolortexthex)
   syncpair(settingcoloraccent, settingcoloraccenthex)
+
+  // live reading scale slider and reset --------------------
+  if (settingreadingscale) {
+    settingreadingscale.addEventListener('input', () => {
+      const val = parseInt(settingreadingscale.value, 10) || 100
+      if (settingreadingscaleval) {
+        settingreadingscaleval.textContent = `${val}%`
+      }
+      const myid = state.currentuser?.id || state.currentuser?.username
+      if (selecteduserid === myid) {
+        document.documentElement.style.setProperty('--reading-scale', val / 100)
+        refreshreadingscale()
+      }
+    })
+  }
+
+  if (btnresetreadingscale) {
+    btnresetreadingscale.addEventListener('click', () => {
+      if (settingreadingscale) {
+        settingreadingscale.value = 100
+      }
+      if (settingreadingscaleval) {
+        settingreadingscaleval.textContent = '100%'
+      }
+      const myid = state.currentuser?.id || state.currentuser?.username
+      if (selecteduserid === myid) {
+        document.documentElement.style.setProperty('--reading-scale', 1)
+        refreshreadingscale()
+      }
+    })
+  }
 
   // click user box in sidebar to open settings --------------------
   if (sidebaruserbox) {
@@ -400,7 +440,8 @@ export function initsidebarsettings() {
         'user-color': settingcoloruser.value,
         'bg-color': settingcolorbg.value,
         'text-color': settingcolortext.value,
-        'accent-color': settingcoloraccent.value
+        'accent-color': settingcoloraccent.value,
+        'reading-scale': settingreadingscale ? (parseInt(settingreadingscale.value, 10) || 100) : 100
       }
 
       const payload = {

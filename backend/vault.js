@@ -3,17 +3,25 @@ import path from 'node:path'
 import { parse, stringify } from 'yaml'
 import { recordevent, recordhistory } from './history.js'
 
-// ensure vault directory exists --------------------
+// ensure vault directory and media folder exist --------------------
 export function initvault(vaultdir) {
   if (!fs.existsSync(vaultdir)) {
     fs.mkdirSync(vaultdir, { recursive: true })
+  }
+  const mediadir = path.join(vaultdir, 'media')
+  if (!fs.existsSync(mediadir)) {
+    fs.mkdirSync(mediadir, { recursive: true })
+  }
+  const pastesdir = path.join(mediadir, 'pastes')
+  if (!fs.existsSync(pastesdir)) {
+    fs.mkdirSync(pastesdir, { recursive: true })
   }
 }
 
 // resolve clean safe note file path supporting folders and extensions --------------------
 export function getnotepath(vaultdir, noteid) {
   const parts = noteid.replace(/\\/g, '/').split('/').filter(Boolean)
-  const cleanedparts = parts.map(p => p.replace(/[^a-zA-Z0-9_.-]/g, '_'))
+  const cleanedparts = parts.map(p => p.replace(/[^a-zA-Z0-9_.\- ()]/g, '_'))
   const lastindex = cleanedparts.length - 1
   if (lastindex >= 0) {
     const hasextension = /\.[a-zA-Z0-9]+$/i.test(cleanedparts[lastindex])
@@ -65,12 +73,11 @@ export function isinternalwrite(filepath, content) {
   const norm = path.normalize(filepath).toLowerCase()
   const entry = recentinternalwrites.get(norm)
   if (!entry) return false
-  if (Date.now() - entry.time > 5000) {
+  if (Date.now() - entry.time > 4000) {
     recentinternalwrites.delete(norm)
     return false
   }
   if (entry.content === null || entry.content === content) {
-    recentinternalwrites.delete(norm)
     return true
   }
   return false
@@ -138,6 +145,32 @@ export function listnotes(vaultdir) {
 
   walk(vaultdir)
   return notes.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))
+}
+
+// list all directories in vault recursively --------------------
+export function listfolders(vaultdir) {
+  initvault(vaultdir)
+  const folders = []
+
+  function walk(currentdir, relprefix = '') {
+    const entries = fs.readdirSync(currentdir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) {
+        continue
+      }
+      if (entry.isDirectory()) {
+        const relid = relprefix
+          ? `${relprefix}/${entry.name}`
+          : entry.name
+        folders.push(relid)
+        const fullpath = path.join(currentdir, entry.name)
+        walk(fullpath, relid)
+      }
+    }
+  }
+
+  walk(vaultdir)
+  return folders.sort()
 }
 
 // read note by id --------------------
@@ -225,7 +258,15 @@ export function movenoteorfolder(vaultdir, historydir, source, destination, auth
   // check if source is an existing directory --------------------
   const srcfolderpath = path.join(vaultdir, ...cleansrc.split('/'))
   if (fs.existsSync(srcfolderpath) && fs.statSync(srcfolderpath).isDirectory()) {
-    const destfolderpath = path.join(vaultdir, ...cleandest.split('/'))
+    let resolveddest = cleandest
+    const destcheckpath = path.join(vaultdir, ...cleandest.split('/'))
+    if (fs.existsSync(destcheckpath) && fs.statSync(destcheckpath).isDirectory() && cleansrc !== cleandest) {
+      resolveddest = `${cleandest}/${path.basename(srcfolderpath)}`
+    }
+    if (cleansrc !== resolveddest) {
+      resolveddest = getuniqueconflictpath(vaultdir, resolveddest, true)
+    }
+    const destfolderpath = path.join(vaultdir, ...resolveddest.split('/'))
     const parentdir = path.dirname(destfolderpath)
     if (!fs.existsSync(parentdir)) {
       fs.mkdirSync(parentdir, { recursive: true })
@@ -237,15 +278,15 @@ export function movenoteorfolder(vaultdir, historydir, source, destination, auth
     // record move event and migrate history directory if exists --------------------
     if (historydir) {
       recordevent(historydir, {
-        file_id: cleandest,
+        file_id: resolveddest,
         event_type: 'move_folder',
         author,
         old_path: cleansrc,
-        new_path: cleandest,
-        details: `folder moved or renamed from ${cleansrc} to ${cleandest}`
+        new_path: resolveddest,
+        details: `folder moved or renamed from ${cleansrc} to ${resolveddest}`
       })
       const srchistdir = path.join(historydir, ...cleansrc.split('/'))
-      const desthistdir = path.join(historydir, ...cleandest.split('/'))
+      const desthistdir = path.join(historydir, ...resolveddest.split('/'))
       if (fs.existsSync(srchistdir)) {
         const histparent = path.dirname(desthistdir)
         if (!fs.existsSync(histparent)) {
@@ -258,8 +299,8 @@ export function movenoteorfolder(vaultdir, historydir, source, destination, auth
     return {
       type: 'folder',
       source: cleansrc,
-      destination: cleandest,
-      message: `renamed folder "${cleansrc}" to "${cleandest}"`
+      destination: resolveddest,
+      message: `renamed folder "${cleansrc}" to "${resolveddest}"`
     }
   }
 
@@ -290,6 +331,11 @@ export function movenoteorfolder(vaultdir, historydir, source, destination, auth
     resolveddest = `${cleandest}/${filename}`
   } else if (!/\.[a-zA-Z0-9]+$/i.test(resolveddest)) {
     resolveddest = `${resolveddest}.md`
+  }
+
+  // resolve conflict if destination already exists --------------------
+  if (resolvedsrc !== resolveddest) {
+    resolveddest = getuniqueconflictpath(vaultdir, resolveddest, false)
   }
 
   const destpath = getnotepath(vaultdir, resolveddest)
@@ -374,22 +420,59 @@ export function deletefolder(vaultdir, historydir, folderpath, author = 'unknown
   return true
 }
 
-// helper to get unique copy name when target already exists --------------------
-function getuniquecopypath(vaultdir, targetid) {
-  const filepath = getnotepath(vaultdir, targetid)
-  if (!fs.existsSync(filepath)) {
-    return targetid
-  }
-  const ext = path.extname(targetid)
-  const base = ext ? targetid.slice(0, targetid.length - ext.length) : targetid
-  let count = 1
-  while (true) {
-    const candidate = `${base}_copy${count > 1 ? count : ''}${ext}`
-    const checkpath = getnotepath(vaultdir, candidate)
-    if (!fs.existsSync(checkpath)) {
+// resolve collision by appending (2), (3), etc. until free path found --------------------
+export function getuniqueconflictpath(vaultdir, targetid, isfolder = false) {
+  const clean = targetid.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  if (isfolder) {
+    let candidate = clean
+    let fullpath = path.join(vaultdir, ...candidate.split('/'))
+    if (!fs.existsSync(fullpath)) {
       return candidate
     }
-    count++
+    const parts = candidate.split('/')
+    const foldername = parts.pop()
+    const parent = parts.join('/')
+
+    const match = foldername.match(/^(.*?)\s*\((\d+)\)$/)
+    const base = match ? match[1] : foldername
+    let num = match ? parseInt(match[2], 10) + 1 : 2
+
+    while (true) {
+      const nextname = `${base} (${num})`
+      candidate = parent ? `${parent}/${nextname}` : nextname
+      fullpath = path.join(vaultdir, ...candidate.split('/'))
+      if (!fs.existsSync(fullpath)) {
+        return candidate
+      }
+      num++
+    }
+  } else {
+    let candidate = clean
+    let fullpath = getnotepath(vaultdir, candidate)
+    if (!fs.existsSync(fullpath)) {
+      return candidate
+    }
+    const parts = candidate.split('/')
+    const filename = parts.pop()
+    const parent = parts.join('/')
+
+    const extmatch = filename.match(/^(.+?)(\.[a-zA-Z0-9]+)$/)
+    const namepart = extmatch ? extmatch[1] : filename
+    const extpart = extmatch ? extmatch[2] : ''
+
+    const nummatch = namepart.match(/^(.*?)\s*\((\d+)\)$/)
+    const base = nummatch ? nummatch[1] : namepart
+    let num = nummatch ? parseInt(nummatch[2], 10) + 1 : 2
+
+    while (true) {
+      const nextname = `${base} (${num})${extpart}`
+      candidate = parent ? `${parent}/${nextname}` : nextname
+      fullpath = getnotepath(vaultdir, candidate)
+      if (!fs.existsSync(fullpath)) {
+        return candidate
+      }
+      num++
+    }
   }
 }
 
@@ -412,11 +495,10 @@ export function copynoteorfolder(vaultdir, historydir, source, destination, auth
     // if target directory already exists copy inside it --------------------
     if (fs.existsSync(destfolderpath) && fs.statSync(destfolderpath).isDirectory() && cleansrc !== cleandest) {
       targetname = `${cleandest}/${path.basename(srcfolderpath)}`
-      destfolderpath = path.join(vaultdir, ...targetname.split('/'))
-    } else if (cleansrc === cleandest) {
-      targetname = `${cleandest}_copy`
-      destfolderpath = path.join(vaultdir, ...targetname.split('/'))
     }
+
+    targetname = getuniqueconflictpath(vaultdir, targetname, true)
+    destfolderpath = path.join(vaultdir, ...targetname.split('/'))
 
     const parentdir = path.dirname(destfolderpath)
     if (!fs.existsSync(parentdir)) {
@@ -473,7 +555,7 @@ export function copynoteorfolder(vaultdir, historydir, source, destination, auth
   }
 
   // if copying in same location or target exists ensure unique copy name --------------------
-  resolveddest = getuniquecopypath(vaultdir, resolveddest)
+  resolveddest = getuniqueconflictpath(vaultdir, resolveddest, false)
   const destpath = getnotepath(vaultdir, resolveddest)
 
   const parentdir = path.dirname(destpath)
@@ -524,7 +606,9 @@ export function updateuserpreferences(vaultdir, userid, updates = {}) {
   const prefspath = path.join(vaultdir, 'system', userid, 'preferences.yaml')
   let existing = readuserpreferences(vaultdir, userid) || {}
   existing = { ...existing, ...updates }
-  fs.writeFileSync(prefspath, stringify(existing), 'utf8')
+  const yamlcontent = stringify(existing)
+  markinternalwrite(prefspath, yamlcontent)
+  fs.writeFileSync(prefspath, yamlcontent, 'utf8')
   return existing
 }
 
@@ -562,9 +646,12 @@ export function initsystemnotes(vaultdir, users = []) {
         'user-color': isai ? '#10b981' : '#3b82f6',
         'bg-color': '#000000',
         'text-color': '#ededed',
-        'accent-color': '#ffffff'
+        'accent-color': '#ffffff',
+        'reading-scale': 100
       }
-      fs.writeFileSync(prefspath, stringify(prefs), 'utf8')
+      const yamlprefs = stringify(prefs)
+      markinternalwrite(prefspath, yamlprefs)
+      fs.writeFileSync(prefspath, yamlprefs, 'utf8')
     }
 
     // create personality markdown --------------------
@@ -574,6 +661,7 @@ export function initsystemnotes(vaultdir, users = []) {
       const template = isai
         ? '# personality and behavior\n\n- minimal and concise\n- personal assistant for household notes and calendar\n'
         : '# personality and details\n\n## details\n- \n\n## preferences\n- \n'
+      markinternalwrite(personalitypath, template)
       fs.writeFileSync(personalitypath, template, 'utf8')
     }
   }

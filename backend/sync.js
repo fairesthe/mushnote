@@ -507,11 +507,13 @@ export async function applydiff(vaultdir, historydir, noteid, options) {
       // if deleting a full line clean up its newline --------------------
       let deletefrom = bounds.from
       let deletelen = bounds.to - bounds.from
-      if (current[bounds.to] === '\n') {
-        deletelen += 1
-      } else if (deletefrom > 0 && current[deletefrom - 1] === '\n') {
-        deletefrom -= 1
-        deletelen += 1
+      if (!target.endsWith('\n') && !target.startsWith('\n')) {
+        if (current[bounds.to] === '\n') {
+          deletelen += 1
+        } else if (deletefrom > 0 && current[deletefrom - 1] === '\n') {
+          deletefrom -= 1
+          deletelen += 1
+        }
       }
       entry.doc.transact(() => {
         entry.ytext.delete(deletefrom, deletelen)

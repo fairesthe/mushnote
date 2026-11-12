@@ -5,6 +5,8 @@ export const state = {
   opentabs: [],
   currentfolder: '',
   allnotes: [],
+  allfolders: [],
+  activefiledrag: null,
   usercolormap: {
     external: '#737373'
   },

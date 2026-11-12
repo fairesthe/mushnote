@@ -6,6 +6,7 @@
   <title>mushnote</title>
   <link rel="icon" type="image/png" href="/logo.png">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/vendor/katex/katex.min.css">
 </head>
 <body>
   <!-- workspace view two column layout -------------------- -->
@@ -85,6 +86,17 @@
               <div class="settings-field">
                 <label for="setting-avatar-url">avatar url</label>
                 <input type="text" id="setting-avatar-url" class="settings-input" placeholder="/avatars/wyatt.png" autocomplete="off">
+              </div>
+
+              <div class="settings-field">
+                <div class="settings-field-header">
+                  <label for="setting-reading-scale">reading scale</label>
+                  <span id="setting-reading-scale-val" class="settings-field-badge">100%</span>
+                </div>
+                <div class="slider-control-row">
+                  <input type="range" id="setting-reading-scale" class="settings-range" min="70" max="180" step="5" value="100">
+                  <button type="button" id="btn-reset-reading-scale" class="btn-slider-reset" title="reset to 100%">reset</button>
+                </div>
               </div>
 
               <button type="button" id="btn-jump-personality-sidebar" class="btn-personality-jump">
@@ -204,6 +216,12 @@
       <!-- browser style draggable tab bar -------------------- -->
       <div id="editor-tabs-bar" class="editor-tabs-bar hidden">
         <div id="tabs-track" class="tabs-track"></div>
+        <div class="tabs-bar-actions">
+          <button type="button" id="btn-view-page" class="btn-view-page hidden" title="view page preview">
+            <span class="btn-view-page-icon">&lt;/&gt;</span>
+            <span class="btn-view-page-text">view page</span>
+          </button>
+        </div>
       </div>
 
       <div id="empty-state" class="empty-state">
@@ -223,6 +241,10 @@
             <button type="button" class="toolbar-btn" data-action="bold" title="bold (ctrl+b)"><b>b</b></button>
             <button type="button" class="toolbar-btn" data-action="italic" title="italic (ctrl+i)"><i>i</i></button>
             <button type="button" class="toolbar-btn" data-action="strike" title="strikethrough"><s>s</s></button>
+            <button type="button" class="toolbar-btn" data-action="highlight" title="highlight (==text==)">highlight</button>
+            <button type="button" class="toolbar-btn" data-action="link" title="link note or url (ctrl+k)">link</button>
+            <button type="button" class="toolbar-btn" data-action="image" title="insert image">image</button>
+            <button type="button" class="toolbar-btn" data-action="latex" title="latex math ($formula$)">latex</button>
             <button type="button" class="toolbar-btn" data-action="code" title="inline code"><code>&lt;&gt;</code></button>
           </div>
           <div class="toolbar-divider"></div>
@@ -247,6 +269,11 @@
         <!-- editor body -------------------- -->
         <div class="editor-body">
           <div id="tiptap-editor" class="tiptap-editor"></div>
+          <div id="plain-editor-wrap" class="plain-editor-wrap hidden">
+            <div id="codemirror-editor" class="codemirror-editor"></div>
+            <div class="editor-backdrop" id="editor-backdrop" aria-hidden="true" style="display:none"></div>
+            <textarea id="note-editor" class="note-textarea hidden" placeholder="start typing..." spellcheck="false"></textarea>
+          </div>
         </div>
       </div>
 
@@ -254,6 +281,25 @@
         <div class="image-viewer-wrap">
           <img id="image-viewer-img" class="image-viewer-img" src="" alt="preview">
           <div id="image-viewer-meta" class="image-viewer-meta"></div>
+        </div>
+      </div>
+
+      <!-- web page preview iframe container -------------------- -->
+      <div id="preview-viewer-container" class="preview-viewer-container hidden">
+        <div class="preview-nav-bar">
+          <div class="preview-nav-controls">
+            <button type="button" id="btn-preview-back" class="preview-nav-btn" title="back">&lt;</button>
+            <button type="button" id="btn-preview-forward" class="preview-nav-btn" title="forward">&gt;</button>
+            <button type="button" id="btn-preview-reload" class="preview-nav-btn" title="reload">reload</button>
+          </div>
+          <div id="preview-address-bar" class="preview-address-bar"></div>
+          <div class="preview-nav-actions">
+            <span id="preview-status" class="preview-status"></span>
+            <button type="button" id="btn-preview-external" class="preview-nav-btn" title="open in new browser tab">open in browser</button>
+          </div>
+        </div>
+        <div class="preview-frame-wrap">
+          <iframe id="preview-iframe" class="preview-iframe" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
         </div>
       </div>
     </main>
@@ -317,14 +363,17 @@
   <!-- custom right click context menu -------------------- -->
   <div id="file-context-menu" class="context-menu hidden">
     <div id="ctx-item-open-tab" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/new.png" alt="tab"> open in new tab</div>
+    <div id="ctx-item-view-page" class="context-item hidden"><img class="btn-icon-img" src="/resources/icons/files/code.png" alt="view"> view page</div>
     <div id="ctx-item-new" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/new.png" alt="new"> new note...</div>
     <div id="ctx-item-new-folder" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/newfolder.png" alt="newfolder"> new folder...</div>
+    <div id="ctx-item-upload" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="upload"> upload file...</div>
     <div id="ctx-item-cut" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="cut"> cut</div>
     <div id="ctx-item-copy" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="copy"> copy</div>
     <div id="ctx-item-paste" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="paste"> paste</div>
     <div id="ctx-item-rename" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/code.png" alt="rename"> rename...</div>
     <div id="ctx-item-delete" class="context-item text-danger"><img class="btn-icon-img" src="/resources/icons/files/delete.png" alt="delete"> delete...</div>
     <div id="ctx-item-delete-folder" class="context-item text-danger"><img class="btn-icon-img" src="/resources/icons/files/delete.png" alt="delete"> delete folder...</div>
+    <div id="ctx-item-media" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/folder.png" alt="media"> media...</div>
     <div id="ctx-item-system" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/folder.png" alt="system"> system...</div>
   </div>
 

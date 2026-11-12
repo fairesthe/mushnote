@@ -1,5 +1,5 @@
 import { state } from './state.js'
-import { opennote, closenote, saveworkspacestate, isnoteidmatch } from './editor.js'
+import { opennote, closenote, saveworkspacestate, isnoteidmatch, formatdraginsert, getdraggeditem, insertcontentintoactivenote } from './editor.js'
 
 // dom elements for tabs --------------------
 const editortabsbar = document.getElementById('editor-tabs-bar')
@@ -52,16 +52,22 @@ export function rendertabs() {
 
   for (let i = 0; i < state.opentabs.length; i++) {
     const tabnoteid = state.opentabs[i]
-    const tabname = tabnoteid.split('/').pop()
+    const ispreview = tabnoteid.startsWith('preview:')
+    const rawid = ispreview ? tabnoteid.slice('preview:'.length) : tabnoteid
+    let tabname = rawid.split('/').pop() || rawid
+    if (!ispreview && !tabname.includes('.')) {
+      tabname = `${tabname}.md`
+    }
+    const displayname = ispreview ? `preview: ${tabname}` : tabname
 
     const tab = document.createElement('div')
-    tab.className = `editor-tab ${isnoteidmatch(tabnoteid, state.activenoteid) ? 'active' : ''}`
+    tab.className = `editor-tab ${isnoteidmatch(tabnoteid, state.activenoteid) ? 'active' : ''} ${ispreview ? 'is-preview-tab' : ''}`
     tab.dataset.index = i
     tab.dataset.noteId = tabnoteid
-    tab.title = tabnoteid
+    tab.title = displayname
 
     tab.innerHTML = `
-      <span class="tab-title">${tabname}</span>
+      <span class="tab-title">${displayname}</span>
       <span class="tab-close" title="close tab">×</span>
     `
 
@@ -80,6 +86,54 @@ export function rendertabs() {
 
       e.preventDefault()
       startdrag(tab, i, e.clientX)
+    })
+
+    // accept file drops and hover to open tab --------------------
+    let tabhovertimer = null
+
+    tab.addEventListener('dragenter', (e) => {
+      const item = state.activefiledrag || getdraggeditem(e)
+      if (!item) return
+      tab.classList.add('drag-over')
+      if (tabhovertimer) clearTimeout(tabhovertimer)
+      tabhovertimer = setTimeout(() => {
+        if (!isnoteidmatch(tabnoteid, state.activenoteid)) {
+          opennote(tabnoteid, { replacecurrent: false, switchfolder: false })
+        }
+      }, 350)
+    })
+
+    tab.addEventListener('dragover', (e) => {
+      const item = state.activefiledrag || getdraggeditem(e)
+      if (!item) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+      tab.classList.add('drag-over')
+    })
+
+    tab.addEventListener('dragleave', (e) => {
+      if (e.relatedTarget && tab.contains(e.relatedTarget)) return
+      tab.classList.remove('drag-over')
+      if (tabhovertimer) {
+        clearTimeout(tabhovertimer)
+        tabhovertimer = null
+      }
+    })
+
+    tab.addEventListener('drop', async (e) => {
+      tab.classList.remove('drag-over')
+      if (tabhovertimer) {
+        clearTimeout(tabhovertimer)
+        tabhovertimer = null
+      }
+      const dragitem = state.activefiledrag || getdraggeditem(e)
+      if (!dragitem) return
+      e.preventDefault()
+      e.stopPropagation()
+
+      await opennote(tabnoteid, { replacecurrent: false, switchfolder: false })
+      const insertinfo = formatdraginsert(dragitem)
+      insertcontentintoactivenote(insertinfo)
     })
 
     tabstrack.appendChild(tab)

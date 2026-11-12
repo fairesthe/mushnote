@@ -4,6 +4,7 @@ import { initfiles, loadnotes } from './files.js'
 import { initassistant, loadaiinfo } from './assistant.js'
 import { initlayout } from './layout.js'
 import { initsidebarsettings } from './settings.js'
+import { initpreview } from './preview.js'
 
 // dom elements for workspace header --------------------
 const loggedavatar = document.getElementById('logged-avatar')
@@ -40,6 +41,7 @@ async function boot() {
   try {
     initlayout()
     initfiles()
+    initpreview()
     initassistant()
     initsidebarsettings()
 

@@ -178,3 +178,40 @@ export function getevents(historydir, fileid = null, limit = 50) {
   `)
   return stmt.all(limit)
 }
+
+// look up note creator and most recent editor from history --------------------
+export function getnoteauthorship(historydir, noteid) {
+  const db = gethistorydb(historydir)
+  const cleanid = noteid.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  const withmd = cleanid.endsWith('.md') ? cleanid : `${cleanid}.md`
+  const stripped = cleanid.endsWith('.md') ? cleanid.slice(0, -3) : cleanid
+
+  // fetch revisions to find latest and initial authors --------------------
+  const revstmt = db.prepare(`
+    SELECT author, timestamp FROM revisions
+    WHERE file_id = ? OR file_id = ? OR file_id = ?
+    ORDER BY timestamp DESC
+  `)
+  const revs = revstmt.all(cleanid, withmd, stripped)
+
+  // check audit events for explicit creation --------------------
+  const eventstmt = db.prepare(`
+    SELECT author, timestamp FROM events
+    WHERE (file_id = ? OR file_id = ? OR file_id = ?) AND event_type = 'create'
+    ORDER BY timestamp ASC
+    LIMIT 1
+  `)
+  const createevent = eventstmt.get(cleanid, withmd, stripped)
+
+  const lastauthor = revs.length > 0 ? revs[0].author : 'external'
+  const firstauthor = revs.length > 0 ? revs[revs.length - 1].author : lastauthor
+  const createdby = createevent?.author || firstauthor || lastauthor
+  const createdtime = createevent?.timestamp || (revs.length > 0 ? revs[revs.length - 1].timestamp : null)
+
+  return {
+    last_author: lastauthor,
+    created_by: createdby,
+    created_time: createdtime,
+    revision_count: revs.length
+  }
+}

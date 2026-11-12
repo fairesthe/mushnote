@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { isinternalwrite, isinternaldelete, textfilepattern } from './vault.js'
 import { applyexternalchange, handleexternaldelete } from './sync.js'
+import { log } from './logger.js'
 
 // start watching vault directory recursively for external edits --------------------
 export function initvaultwatcher(vaultdir, historydir, wss) {
@@ -59,6 +60,7 @@ export function initvaultwatcher(vaultdir, historydir, wss) {
     if (!fs.existsSync(fullpath)) {
       const internal = isinternaldelete(fullpath)
       if (!internal) {
+        log.watcher('delete', relpath, 'external file removed')
         handleexternaldelete(vaultdir, historydir, relpath)
       }
       broadcastvaultchange({
@@ -105,6 +107,7 @@ export function initvaultwatcher(vaultdir, historydir, wss) {
     // apply change into memory yjs document and sqlite history --------------------
     const changed = applyexternalchange(vaultdir, historydir, relpath, content)
     if (changed) {
+      log.watcher('sync', relpath, 'external edit detected and synced')
       broadcastvaultchange({
         type: 'vault_changed',
         action: 'edit',

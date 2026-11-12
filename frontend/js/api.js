@@ -17,12 +17,26 @@ export async function api(path, options = {}) {
   return data
 }
 
+// parse reading scale preference into multiplier --------------------
+export function parsereadingscale(val) {
+  if (val === undefined || val === null || val === '') return 1
+  const num = parseFloat(val)
+  if (isNaN(num) || num <= 0) return 1
+  return num > 10 ? num / 100 : num
+}
+
 // apply user theme preferences --------------------
 export function applytheme(prefs = {}) {
   const root = document.documentElement
   root.style.setProperty('--bg-color', prefs['bg-color'] || '#000000')
   root.style.setProperty('--text-color', prefs['text-color'] || '#ededed')
-  root.style.setProperty('--accent-color', prefs['accent-color'] || '#ffffff')
+  const accent = prefs['accent-color'] || '#ffffff'
+  root.style.setProperty('--accent-color', accent)
+  root.style.setProperty('--highlight-color', hextorgba(accent, 0.35))
+
+  // text file reading scale for code and markdown --------------------
+  const scale = parsereadingscale(prefs['reading-scale'])
+  root.style.setProperty('--reading-scale', scale)
 }
 
 // convert hex color string to rgba format --------------------

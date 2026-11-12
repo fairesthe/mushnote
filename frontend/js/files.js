@@ -1,21 +1,25 @@
 import { api } from './api.js'
 import { state } from './state.js'
-import { opennote, closenote, saveworkspacestate, loadworkspacestate, isnoteidmatch } from './editor.js'
+import { opennote, closenote, saveworkspacestate, loadworkspacestate, isnoteidmatch, formatdraginsert, getdraggeditem, insertcontentintoactivenote } from './editor.js'
 import { closetab, rendertabs } from './tabs.js'
+import { ispreviewable, openpreviewtab } from './preview.js'
 
 // dom elements for file navigation --------------------
 const folderbreadcrumb = document.getElementById('folder-breadcrumb')
 const folderitems = document.getElementById('folder-items')
 const filecontextmenu = document.getElementById('file-context-menu')
 const ctxitemopentab = document.getElementById('ctx-item-open-tab')
+const ctxitemviewpage = document.getElementById('ctx-item-view-page')
 const ctxitemnew = document.getElementById('ctx-item-new')
 const ctxitemnewfolder = document.getElementById('ctx-item-new-folder')
+const ctxitemupload = document.getElementById('ctx-item-upload')
 const ctxitemcut = document.getElementById('ctx-item-cut')
 const ctxitemcopy = document.getElementById('ctx-item-copy')
 const ctxitempaste = document.getElementById('ctx-item-paste')
 const ctxitemrename = document.getElementById('ctx-item-rename')
 const ctxitemdelete = document.getElementById('ctx-item-delete')
 const ctxitemdeletefolder = document.getElementById('ctx-item-delete-folder')
+const ctxitemmedia = document.getElementById('ctx-item-media')
 const ctxitemsystem = document.getElementById('ctx-item-system')
 
 const newnotedialog = document.getElementById('new-note-dialog')
@@ -28,6 +32,69 @@ let contexttargetnoteid = null
 let contexttargetfolder = null
 let clipboard = null
 let hasinitializednotes = false
+
+// clear all drag target visual indicators --------------------
+export function clearalldraghighlights() {
+  document.querySelectorAll('.drag-over, .is-drag-source').forEach(el => {
+    el.classList.remove('drag-over', 'is-drag-source')
+  })
+}
+
+// move a file or folder into a target folder --------------------
+export async function moveitemtofolder(srcpath, isfile, targetdestfolder) {
+  if (!srcpath) return
+  const basename = srcpath.split('/').pop()
+  const destpath = targetdestfolder ? `${targetdestfolder}/${basename}` : basename
+  if (srcpath === destpath) return
+
+  // prevent moving folder into itself or its subfolder --------------------
+  if (!isfile) {
+    if (targetdestfolder === srcpath || targetdestfolder.startsWith(`${srcpath}/`)) {
+      return
+    }
+  }
+
+  try {
+    const res = await api('/api/note/rename', {
+      method: 'POST',
+      body: JSON.stringify({ old_id: srcpath, new_id: destpath })
+    })
+    const actualdest = res?.destination || destpath
+
+    if (isfile) {
+      if (state.activenoteid === srcpath) {
+        state.activenoteid = actualdest
+      }
+      if (state.opentabs.includes(srcpath)) {
+        state.opentabs = state.opentabs.map(t => t === srcpath ? actualdest : t)
+        rendertabs()
+        saveworkspacestate()
+      }
+    } else {
+      const oldprefix = `${srcpath}/`
+      const newprefix = `${actualdest}/`
+      let tabsmodified = false
+      state.opentabs = state.opentabs.map(tabid => {
+        if (tabid.startsWith(oldprefix)) {
+          tabsmodified = true
+          return `${newprefix}${tabid.slice(oldprefix.length)}`
+        }
+        return tabid
+      })
+      if (state.activenoteid && state.activenoteid.startsWith(oldprefix)) {
+        state.activenoteid = `${newprefix}${state.activenoteid.slice(oldprefix.length)}`
+      }
+      if (tabsmodified) {
+        rendertabs()
+        saveworkspacestate()
+      }
+    }
+
+    await loadnotes()
+  } catch (err) {
+    alert(`move failed: ${err.message}`)
+  }
+}
 
 // resolve file icon based on extension --------------------
 export function getfileicon(filename) {
@@ -47,6 +114,52 @@ export function getfileicon(filename) {
   return '/resources/icons/files/common.png'
 }
 
+// upload files from picker into target folder in vault --------------------
+export function uploadfiletofolder(targetfolder = null) {
+  const folder = targetfolder !== null ? targetfolder : state.currentfolder
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.multiple = true
+  input.style.display = 'none'
+
+  input.addEventListener('change', async () => {
+    const files = Array.from(input.files || [])
+    input.remove()
+    if (!files.length) return
+
+    for (const file of files) {
+      try {
+        const dataurl = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result)
+          reader.onerror = () => reject(new Error('failed to read file'))
+          reader.readAsDataURL(file)
+        })
+
+        const normfolder = folder ? folder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') : ''
+        const uploadpath = normfolder ? `${normfolder}/${file.name}` : file.name
+
+        await api('/api/upload', {
+          method: 'POST',
+          body: JSON.stringify({
+            path: uploadpath,
+            data: dataurl
+          })
+        })
+      } catch (err) {
+        console.error('upload failed for file', file.name, err)
+      }
+    }
+
+    try {
+      await loadnotes()
+    } catch {}
+  })
+
+  document.body.appendChild(input)
+  input.click()
+}
+
 // extract immediate children of current folder --------------------
 export function getfoldercontents(folderpath) {
   const prefix = folderpath
@@ -57,10 +170,44 @@ export function getfoldercontents(folderpath) {
   const files = []
 
   const insystem = folderpath === 'system' || folderpath.startsWith('system/')
+  const inmedia = folderpath === 'media' || folderpath.startsWith('media/')
+
+  // populate subfolders from known folders even if they have no notes --------------------
+  for (const folder of (state.allfolders || [])) {
+    // hide system notes unless currently browsing inside system --------------------
+    if (!insystem && (folder === 'system' || folder.startsWith('system/'))) {
+      continue
+    }
+
+    // hide media folder contents unless currently browsing inside media --------------------
+    if (!inmedia && (folder === 'media' || folder.startsWith('media/'))) {
+      continue
+    }
+
+    if (prefix && !folder.startsWith(prefix)) {
+      continue
+    }
+
+    const remainder = folder.slice(prefix.length)
+    const parts = remainder.split('/').filter(Boolean)
+
+    if (parts.length > 0) {
+      // never show system or media in root folder listing --------------------
+      if (!prefix && (parts[0] === 'system' || parts[0] === 'media')) {
+        continue
+      }
+      subfolders.add(parts[0])
+    }
+  }
 
   for (const note of state.allnotes) {
     // hide system notes unless currently browsing inside system --------------------
     if (!insystem && note.note_id.startsWith('system/')) {
+      continue
+    }
+
+    // hide media folder contents unless currently browsing inside media --------------------
+    if (!inmedia && note.note_id.startsWith('media/')) {
       continue
     }
 
@@ -72,8 +219,8 @@ export function getfoldercontents(folderpath) {
     const parts = remainder.split('/')
 
     if (parts.length > 1) {
-      // never show system in root folder listing --------------------
-      if (!prefix && parts[0] === 'system') {
+      // never show system or media in root folder listing --------------------
+      if (!prefix && (parts[0] === 'system' || parts[0] === 'media')) {
         continue
       }
       subfolders.add(parts[0])
@@ -115,6 +262,25 @@ export function renderfolderview() {
     const parts = state.currentfolder.split('/')
     const parentfolder = parts.slice(0, -1).join('/')
     btnback.addEventListener('click', () => navigatefolder(parentfolder))
+
+    // accept drops on back button to move to parent folder --------------------
+    btnback.addEventListener('dragover', (e) => {
+      const item = state.activefiledrag || getdraggeditem(e)
+      if (!item) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      btnback.classList.add('drag-over')
+    })
+    btnback.addEventListener('dragleave', () => btnback.classList.remove('drag-over'))
+    btnback.addEventListener('drop', async (e) => {
+      btnback.classList.remove('drag-over')
+      const item = state.activefiledrag || getdraggeditem(e)
+      if (!item) return
+      e.preventDefault()
+      e.stopPropagation()
+      await moveitemtofolder(item.path, item.type === 'file', parentfolder)
+    })
+
     folderbreadcrumb.appendChild(btnback)
   }
 
@@ -125,6 +291,25 @@ export function renderfolderview() {
   rootcrumb.className = `breadcrumb-crumb ${!state.currentfolder ? 'active' : ''}`
   rootcrumb.textContent = 'vault'
   rootcrumb.addEventListener('click', () => navigatefolder(''))
+
+  // accept drops on root crumb to move to vault root --------------------
+  rootcrumb.addEventListener('dragover', (e) => {
+    const item = state.activefiledrag || getdraggeditem(e)
+    if (!item) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    rootcrumb.classList.add('drag-over')
+  })
+  rootcrumb.addEventListener('dragleave', () => rootcrumb.classList.remove('drag-over'))
+  rootcrumb.addEventListener('drop', async (e) => {
+    rootcrumb.classList.remove('drag-over')
+    const item = state.activefiledrag || getdraggeditem(e)
+    if (!item) return
+    e.preventDefault()
+    e.stopPropagation()
+    await moveitemtofolder(item.path, item.type === 'file', '')
+  })
+
   trail.appendChild(rootcrumb)
 
   if (state.currentfolder) {
@@ -147,6 +332,24 @@ export function renderfolderview() {
 
       if (!islast) {
         crumb.addEventListener('click', () => navigatefolder(targetpath))
+
+        // accept drops on parent crumbs to move to that folder --------------------
+        crumb.addEventListener('dragover', (e) => {
+          const item = state.activefiledrag || getdraggeditem(e)
+          if (!item) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          crumb.classList.add('drag-over')
+        })
+        crumb.addEventListener('dragleave', () => crumb.classList.remove('drag-over'))
+        crumb.addEventListener('drop', async (e) => {
+          crumb.classList.remove('drag-over')
+          const item = state.activefiledrag || getdraggeditem(e)
+          if (!item) return
+          e.preventDefault()
+          e.stopPropagation()
+          await moveitemtofolder(item.path, item.type === 'file', targetpath)
+        })
       }
       trail.appendChild(crumb)
     }
@@ -174,6 +377,9 @@ export function renderfolderview() {
 
     const row = document.createElement('div')
     row.className = 'folder-row is-folder'
+    if (clipboard && clipboard.action === 'cut' && clipboard.path === fullfolderpath) {
+      row.classList.add('is-cut')
+    }
     row.innerHTML = `
       <img class="row-icon-img" src="/resources/icons/files/folder.png" alt="folder">
       <span class="row-name">${foldername}</span>
@@ -188,6 +394,49 @@ export function renderfolderview() {
       opencontextmenu(e.clientX, e.clientY, null, fullfolderpath)
     })
 
+    // drag and drop folder row --------------------
+    row.draggable = true
+    row.addEventListener('dragstart', (e) => {
+      state.activefiledrag = {
+        type: 'folder',
+        path: fullfolderpath,
+        name: foldername,
+        title: foldername
+      }
+      e.dataTransfer.setData('text/plain', fullfolderpath)
+      e.dataTransfer.setData('application/mushnote-item', JSON.stringify(state.activefiledrag))
+      e.dataTransfer.effectAllowed = 'copyMove'
+      row.classList.add('is-drag-source')
+    })
+    row.addEventListener('dragend', () => {
+      row.classList.remove('is-drag-source')
+      state.activefiledrag = null
+      clearalldraghighlights()
+    })
+
+    // accept drops to move files or folders into this folder --------------------
+    row.addEventListener('dragover', (e) => {
+      const item = state.activefiledrag || getdraggeditem(e)
+      if (!item) return
+      if (item.path === fullfolderpath || fullfolderpath.startsWith(`${item.path}/`)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      row.classList.add('drag-over')
+    })
+    row.addEventListener('dragleave', (e) => {
+      if (e.relatedTarget && row.contains(e.relatedTarget)) return
+      row.classList.remove('drag-over')
+    })
+    row.addEventListener('drop', async (e) => {
+      row.classList.remove('drag-over')
+      const item = state.activefiledrag || getdraggeditem(e)
+      if (!item) return
+      if (item.path === fullfolderpath || fullfolderpath.startsWith(`${item.path}/`)) return
+      e.preventDefault()
+      e.stopPropagation()
+      await moveitemtofolder(item.path, item.type === 'file', fullfolderpath)
+    })
+
     folderitems.appendChild(row)
   }
 
@@ -196,6 +445,10 @@ export function renderfolderview() {
     const row = document.createElement('div')
     row.className = 'folder-row is-file'
     row.dataset.noteId = file.id
+
+    if (clipboard && clipboard.action === 'cut' && isnoteidmatch(file.id, clipboard.path)) {
+      row.classList.add('is-cut')
+    }
 
     if (isnoteidmatch(file.id, state.activenoteid)) {
       row.classList.add('active')
@@ -223,6 +476,52 @@ export function renderfolderview() {
       opencontextmenu(e.clientX, e.clientY, file.id)
     })
 
+    // drag and drop file row --------------------
+    row.draggable = true
+    row.addEventListener('dragstart', (e) => {
+      state.activefiledrag = {
+        type: 'file',
+        path: file.id,
+        name: file.name,
+        title: file.title || file.name,
+        isimage: /\.(png|jpg|jpeg|gif|webp|svg|ico|bmp)$/i.test(file.name),
+        ismarkdown: file.name.endsWith('.md') || file.name.endsWith('.markdown')
+      }
+      e.dataTransfer.setData('text/plain', file.id)
+      e.dataTransfer.setData('application/mushnote-item', JSON.stringify(state.activefiledrag))
+      e.dataTransfer.effectAllowed = 'copyMove'
+      row.classList.add('is-drag-source')
+    })
+    row.addEventListener('dragend', () => {
+      row.classList.remove('is-drag-source')
+      state.activefiledrag = null
+      clearalldraghighlights()
+    })
+
+    // accept drops to insert link or embedded image into this file --------------------
+    row.addEventListener('dragover', (e) => {
+      const item = state.activefiledrag || getdraggeditem(e)
+      if (!item || item.path === file.id) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+      row.classList.add('drag-over')
+    })
+    row.addEventListener('dragleave', (e) => {
+      if (e.relatedTarget && row.contains(e.relatedTarget)) return
+      row.classList.remove('drag-over')
+    })
+    row.addEventListener('drop', async (e) => {
+      row.classList.remove('drag-over')
+      const item = state.activefiledrag || getdraggeditem(e)
+      if (!item || item.path === file.id) return
+      e.preventDefault()
+      e.stopPropagation()
+
+      await opennote(file.id, { replacecurrent: false })
+      const insertinfo = formatdraginsert(item)
+      insertcontentintoactivenote(insertinfo)
+    })
+
     folderitems.appendChild(row)
   }
 }
@@ -240,6 +539,28 @@ export function updateactivefilerow() {
   }
 }
 
+// update cut state transparency on visible file and folder rows --------------------
+export function updatecutrows() {
+  if (!folderitems) return
+  const rows = folderitems.querySelectorAll('.folder-row')
+  for (const row of rows) {
+    const isfolder = row.classList.contains('is-folder')
+    const noteid = row.dataset.noteId
+    const foldername = row.querySelector('.row-name')?.textContent
+    const fullfolderpath = foldername ? (state.currentfolder ? `${state.currentfolder}/${foldername}` : foldername) : null
+
+    let iscut = false
+    if (clipboard && clipboard.action === 'cut') {
+      if (isfolder && fullfolderpath && fullfolderpath === clipboard.path) {
+        iscut = true
+      } else if (!isfolder && noteid && isnoteidmatch(noteid, clipboard.path)) {
+        iscut = true
+      }
+    }
+    row.classList.toggle('is-cut', iscut)
+  }
+}
+
 // open custom context menu --------------------
 export function opencontextmenu(x, y, noteid = null, folderpath = null) {
   contexttargetnoteid = noteid
@@ -250,6 +571,7 @@ export function opencontextmenu(x, y, noteid = null, folderpath = null) {
 
   // manage visibility of context items --------------------
   if (ctxitemopentab) ctxitemopentab.classList.toggle('hidden', !isfile)
+  if (ctxitemviewpage) ctxitemviewpage.classList.toggle('hidden', !isfile || !ispreviewable(noteid))
   if (ctxitemrename) ctxitemrename.classList.toggle('hidden', !isfile && !isfolderrow)
   if (ctxitemdelete) ctxitemdelete.classList.toggle('hidden', !isfile)
   if (ctxitemdeletefolder) ctxitemdeletefolder.classList.toggle('hidden', !isfolderrow)
@@ -267,6 +589,11 @@ export function opencontextmenu(x, y, noteid = null, folderpath = null) {
     ctxitemnewfolder.innerHTML = `<img class="btn-icon-img" src="/resources/icons/files/newfolder.png" alt="newfolder"> ${isfolderrow ? 'new subfolder...' : 'new folder...'}`
   }
 
+  if (ctxitemupload) {
+    ctxitemupload.classList.toggle('hidden', isfile)
+    ctxitemupload.innerHTML = `<img class="btn-icon-img" src="/resources/icons/files/common.png" alt="upload"> ${isfolderrow ? 'upload file to folder...' : 'upload file...'}`
+  }
+
   if (ctxitempaste) {
     const canpaste = !isfile && Boolean(clipboard)
     ctxitempaste.classList.toggle('hidden', !canpaste)
@@ -274,6 +601,10 @@ export function opencontextmenu(x, y, noteid = null, folderpath = null) {
       const clipname = clipboard.path.split('/').pop()
       ctxitempaste.innerHTML = `<img class="btn-icon-img" src="/resources/icons/files/common.png" alt="paste"> paste "${clipname}"`
     }
+  }
+
+  if (ctxitemmedia) {
+    ctxitemmedia.classList.toggle('hidden', isfile || isfolderrow)
   }
 
   if (ctxitemsystem) {
@@ -297,6 +628,22 @@ export function closecontextmenu() {
 export function initfiles() {
   document.addEventListener('click', closecontextmenu)
 
+  // cancel cut selection on escape key --------------------
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && clipboard && clipboard.action === 'cut') {
+      clipboard = null
+      updatecutrows()
+    }
+  })
+
+  // media folder navigation --------------------
+  if (ctxitemmedia) {
+    ctxitemmedia.addEventListener('click', () => {
+      closecontextmenu()
+      navigatefolder('media')
+    })
+  }
+
   // refresh file list when external filesystem changes occur --------------------
   window.addEventListener('vault-changed', (e) => {
     if (e.detail?.action === 'delete' && e.detail?.note_id) {
@@ -306,13 +653,32 @@ export function initfiles() {
   })
 
   // right click on file pane empty area --------------------
-  if (folderitems) {
-    folderitems.addEventListener('contextmenu', (e) => {
-      if (e.target.closest('.folder-row')) {
+  const foldernavpane = document.getElementById('folder-nav-pane')
+  const targetempty = foldernavpane || folderitems
+  if (targetempty) {
+    targetempty.addEventListener('contextmenu', (e) => {
+      if (e.target.closest('.folder-row') || e.target.closest('.breadcrumb-crumb')) {
         return
       }
       e.preventDefault()
       opencontextmenu(e.clientX, e.clientY, null, state.currentfolder)
+    })
+
+    // drag and drop into empty area of current folder --------------------
+    targetempty.addEventListener('dragover', (e) => {
+      const item = state.activefiledrag || getdraggeditem(e)
+      if (!item) return
+      if (e.target !== folderitems && !e.target.classList.contains('folder-empty') && e.target !== foldernavpane) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+    })
+
+    targetempty.addEventListener('drop', async (e) => {
+      if (e.target !== folderitems && !e.target.classList.contains('folder-empty') && e.target !== foldernavpane) return
+      const item = state.activefiledrag || getdraggeditem(e)
+      if (!item) return
+      e.preventDefault()
+      await moveitemtofolder(item.path, item.type === 'file', state.currentfolder)
     })
   }
 
@@ -323,6 +689,15 @@ export function initfiles() {
       const target = contexttargetnoteid
       closecontextmenu()
       opennote(target, { newtab: true })
+    })
+  }
+
+  if (ctxitemviewpage) {
+    ctxitemviewpage.addEventListener('click', () => {
+      if (!contexttargetnoteid) return
+      const target = contexttargetnoteid
+      closecontextmenu()
+      openpreviewtab(target)
     })
   }
 
@@ -368,6 +743,15 @@ export function initfiles() {
     })
   }
 
+  // upload file listener --------------------
+  if (ctxitemupload) {
+    ctxitemupload.addEventListener('click', () => {
+      const targetfolder = contexttargetfolder !== null ? contexttargetfolder : state.currentfolder
+      closecontextmenu()
+      uploadfiletofolder(targetfolder)
+    })
+  }
+
   // cut listener --------------------
   if (ctxitemcut) {
     ctxitemcut.addEventListener('click', () => {
@@ -376,6 +760,7 @@ export function initfiles() {
       if (!targetpath) return
       closecontextmenu()
       clipboard = { action: 'cut', type: isfile ? 'file' : 'folder', path: targetpath }
+      updatecutrows()
     })
   }
 
@@ -387,6 +772,7 @@ export function initfiles() {
       if (!targetpath) return
       closecontextmenu()
       clipboard = { action: 'copy', type: isfile ? 'file' : 'folder', path: targetpath }
+      updatecutrows()
     })
   }
 
@@ -404,50 +790,16 @@ export function initfiles() {
 
       try {
         if (clipboard.action === 'cut') {
-          if (srcpath !== destpath) {
-            await api('/api/note/rename', {
-              method: 'POST',
-              body: JSON.stringify({ old_id: srcpath, new_id: destpath })
-            })
-
-            if (isfile) {
-              if (state.activenoteid === srcpath) {
-                state.activenoteid = destpath
-              }
-              if (state.opentabs.includes(srcpath)) {
-                state.opentabs = state.opentabs.map(t => t === srcpath ? destpath : t)
-                rendertabs()
-                saveworkspacestate()
-              }
-            } else {
-              const oldprefix = `${srcpath}/`
-              const newprefix = `${destpath}/`
-              let tabsmodified = false
-              state.opentabs = state.opentabs.map(tabid => {
-                if (tabid.startsWith(oldprefix)) {
-                  tabsmodified = true
-                  return `${newprefix}${tabid.slice(oldprefix.length)}`
-                }
-                return tabid
-              })
-              if (state.activenoteid && state.activenoteid.startsWith(oldprefix)) {
-                state.activenoteid = `${newprefix}${state.activenoteid.slice(oldprefix.length)}`
-              }
-              if (tabsmodified) {
-                rendertabs()
-                saveworkspacestate()
-              }
-            }
-          }
+          await moveitemtofolder(srcpath, isfile, targetdestfolder)
           clipboard = null
+          updatecutrows()
         } else if (clipboard.action === 'copy') {
           await api('/api/note/copy', {
             method: 'POST',
             body: JSON.stringify({ source: srcpath, destination: targetdestfolder ? `${targetdestfolder}/` : destpath })
           })
+          await loadnotes()
         }
-
-        await loadnotes()
       } catch (err) {
         alert(`paste failed: ${err.message}`)
       }
@@ -478,23 +830,24 @@ export function initfiles() {
       const newid = parentpath ? `${parentpath}/${cleanednewname}` : cleanednewname
 
       try {
-        await api('/api/note/rename', {
+        const res = await api('/api/note/rename', {
           method: 'POST',
           body: JSON.stringify({ old_id: oldtarget, new_id: newid })
         })
+        const actualid = res?.destination || newid
 
         if (!isfolder) {
           if (state.activenoteid === oldtarget) {
-            state.activenoteid = newid
+            state.activenoteid = actualid
           }
           if (state.opentabs.includes(oldtarget)) {
-            state.opentabs = state.opentabs.map(t => t === oldtarget ? newid : t)
+            state.opentabs = state.opentabs.map(t => t === oldtarget ? actualid : t)
             rendertabs()
             saveworkspacestate()
           }
         } else {
           const oldprefix = `${oldtarget}/`
-          const newprefix = `${newid}/`
+          const newprefix = `${actualid}/`
           let tabsmodified = false
           state.opentabs = state.opentabs.map(tabid => {
             if (tabid.startsWith(oldprefix)) {
@@ -507,12 +860,15 @@ export function initfiles() {
             state.activenoteid = `${newprefix}${state.activenoteid.slice(oldprefix.length)}`
           }
           if (state.currentfolder === oldtarget) {
-            state.currentfolder = newid
+            state.currentfolder = actualid
           }
           if (tabsmodified) {
             rendertabs()
             saveworkspacestate()
           }
+        }
+        if (clipboard && clipboard.path === oldtarget) {
+          clipboard.path = actualid
         }
         await loadnotes()
       } catch (err) {
@@ -537,6 +893,10 @@ export function initfiles() {
         await api(`/api/note?id=${encodeURIComponent(target)}`, {
           method: 'DELETE'
         })
+        if (clipboard && clipboard.path === target) {
+          clipboard = null
+          updatecutrows()
+        }
         closetab(target)
         await loadnotes()
       } catch (err) {
@@ -559,6 +919,10 @@ export function initfiles() {
         await api(`/api/folder?path=${encodeURIComponent(targetfolder)}`, {
           method: 'DELETE'
         })
+        if (clipboard && (clipboard.path === targetfolder || clipboard.path.startsWith(`${targetfolder}/`))) {
+          clipboard = null
+          updatecutrows()
+        }
 
         const prefix = `${targetfolder}/`
         const tabsremaining = state.opentabs.filter(t => !t.startsWith(prefix) && t !== targetfolder)
@@ -640,18 +1004,20 @@ export function initfiles() {
       const initialcontent = `# ${titleheading}\n\n`
 
       try {
-        await api('/api/notes', {
+        const res = await api('/api/notes', {
           method: 'POST',
           body: JSON.stringify({
             note_id: raw,
             content: initialcontent,
-            author: state.currentuser ? state.currentuser.id : 'unknown'
+            author: state.currentuser ? state.currentuser.id : 'unknown',
+            create_unique: true
           })
         })
 
+        const createdid = res?.note_id || raw
         newnotedialog.classList.add('hidden')
         await loadnotes()
-        await opennote(raw, { newtab: true, force: true })
+        await opennote(createdid, { newtab: true, force: true })
       } catch (err) {
         newnoteerror.textContent = err.message
         newnoteerror.classList.remove('hidden')
@@ -665,6 +1031,7 @@ export async function loadnotes() {
   try {
     const data = await api('/api/notes')
     state.allnotes = data.notes || []
+    state.allfolders = data.folders || []
 
     // prune tabs for notes that no longer exist on disk --------------------
     if (Array.isArray(state.opentabs) && state.opentabs.length > 0) {
@@ -728,15 +1095,16 @@ export async function loadnotes() {
       }
     }
 
-    // ensure current folder exists in accessible notes unless it is archive or system --------------------
-      if (state.currentfolder && state.currentfolder !== 'archive' && state.currentfolder !== 'system') {
-        const folderprefix = state.currentfolder.endsWith('/') ? state.currentfolder : `${state.currentfolder}/`
-        const folderexists = state.allnotes.some(n => n.note_id.startsWith(folderprefix))
-        if (!folderexists) {
-          const parentparts = state.currentfolder.split('/').slice(0, -1)
-          state.currentfolder = parentparts.join('/')
-        }
+    // ensure current folder exists in accessible notes or folders unless it is archive, system, or media --------------------
+    if (state.currentfolder && state.currentfolder !== 'archive' && state.currentfolder !== 'system' && state.currentfolder !== 'media') {
+      const folderprefix = state.currentfolder.endsWith('/') ? state.currentfolder : `${state.currentfolder}/`
+      const folderexists = state.allnotes.some(n => n.note_id.startsWith(folderprefix)) ||
+        (state.allfolders || []).some(f => f === state.currentfolder || f.startsWith(folderprefix))
+      if (!folderexists) {
+        const parentparts = state.currentfolder.split('/').slice(0, -1)
+        state.currentfolder = parentparts.join('/')
       }
+    }
 
       // always render folder view so directory tree is always populated --------------------
       renderfolderview()
