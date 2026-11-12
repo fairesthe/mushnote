@@ -531,280 +531,280 @@ export async function senduserprompt(text) {
           if (call.name === 'note_move' && call.args) {
             const src = call.args.source
             const dest = call.args.destination
-            const isfolder = call.args.move_type === 'folder'
-            if (src && dest) {
-              let tabsmodified = false
-              if (isfolder) {
-                const srcprefix = src.endsWith('/') ? src : `${src}/`
-                const destprefix = dest.endsWith('/') ? dest : `${dest}/`
-                state.opentabs = state.opentabs.map(tabid => {
-                  if (tabid.startsWith(srcprefix)) {
-                    tabsmodified = true
-                    return `${destprefix}${tabid.slice(srcprefix.length)}`
+                    const isfolder = call.args.move_type === 'folder'
+                    if (src && dest) {
+                      let tabsmodified = false
+                      if (isfolder) {
+                        const srcprefix = src.endsWith('/') ? src : `${src}/`
+                        const destprefix = dest.endsWith('/') ? dest : `${dest}/`
+                        state.opentabs = state.opentabs.map(tabid => {
+                          if (tabid.startsWith(srcprefix)) {
+                            tabsmodified = true
+                            return `${destprefix}${tabid.slice(srcprefix.length)}`
+                          }
+                          return tabid
+                        })
+                        if (state.activenoteid && state.activenoteid.startsWith(srcprefix)) {
+                          state.activenoteid = `${destprefix}${state.activenoteid.slice(srcprefix.length)}`
+                        }
+                          if (state.currentfolder && (state.currentfolder === src || state.currentfolder.startsWith(srcprefix))) {
+                            state.currentfolder = `${destprefix}${state.currentfolder.slice(srcprefix.length)}`.replace(/\/$/, '')
+                          }
+                        } else {
+                          if (state.opentabs.includes(src)) {
+                            state.opentabs = state.opentabs.map(t => t === src ? dest : t)
+                            tabsmodified = true
+                          }
+                          if (state.activenoteid === src) {
+                            state.activenoteid = dest
+                          }
+                        }
+                        if (tabsmodified) {
+                          rendertabs()
+                          saveworkspacestate()
+                        }
+                      }
+                    }
                   }
-                  return tabid
-                })
-                if (state.activenoteid && state.activenoteid.startsWith(srcprefix)) {
-                  state.activenoteid = `${destprefix}${state.activenoteid.slice(srcprefix.length)}`
-                }
-                if (state.currentfolder && (state.currentfolder === src || state.currentfolder.startsWith(srcprefix))) {
-                  state.currentfolder = `${destprefix}${state.currentfolder.slice(srcprefix.length)}`.replace(/\/$/, '')
-                }
-              } else {
-                if (state.opentabs.includes(src)) {
-                  state.opentabs = state.opentabs.map(t => t === src ? dest : t)
-                  tabsmodified = true
-                }
-                if (state.activenoteid === src) {
-                  state.activenoteid = dest
                 }
               }
-              if (tabsmodified) {
-                rendertabs()
-                saveworkspacestate()
+
+              // render agent response --------------------
+              const agentmsg = document.createElement('div')
+              agentmsg.className = 'ai-msg agent'
+              agentmsg.innerHTML = `<div class="msg-bubble">${data.reply || '(no response)'}</div>`
+
+              // render interactive options chips if present --------------------
+              if (data.options && data.options.length > 0) {
+                const optionsrow = document.createElement('div')
+                optionsrow.className = 'ai-options-row'
+
+                for (const optiontext of data.options) {
+                  const btn = document.createElement('button')
+                  btn.type = 'button'
+                  btn.className = 'ai-option-btn'
+                  btn.textContent = optiontext
+
+                  btn.addEventListener('click', (e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+
+                    // disable all sibling buttons and highlight clicked --------------------
+                    const allbtns = optionsrow.querySelectorAll('.ai-option-btn')
+                    allbtns.forEach(b => b.classList.add('disabled'))
+                    btn.classList.add('selected')
+
+                    // auto send selected answer --------------------
+                    senduserprompt(optiontext)
+                  })
+
+                  optionsrow.appendChild(btn)
+                }
+
+                agentmsg.appendChild(optionsrow)
+              }
+
+              appendcopyactions(agentmsg, data.reply || '')
+              aimessages.appendChild(agentmsg)
+
+              // fade and remove non-detailed activity status lines once done --------------------
+              if (!detailed && nonadminnodes.length > 0) {
+                for (const node of nonadminnodes) {
+                  cleanactivitystatus(node, 800)
+                }
+              }
+
+              // update chat history with full sdk turns or fallback append --------------------
+              if (data.history && Array.isArray(data.history)) {
+                aichathistory = data.history
+              } else {
+                const modelturncontent = data.reply + (data.options?.length ? `\n<options>${JSON.stringify(data.options)}</options>` : '')
+                aichathistory.push({ role: 'user', content: prompt })
+                aichathistory.push({ role: 'model', content: modelturncontent })
+              }
+
+              // record assistant response in conversation log --------------------
+              conversationlog.push({
+                role: 'assistant',
+                thought: data.thought?.trim() || null,
+                tool_calls: data.tool_calls || [],
+                reply: data.reply || '',
+                options: data.options || [],
+                timestamp: new Date().toISOString()
+              })
+            } catch (err) {
+              statusmsg.remove()
+              let displayerr = err.message || 'request failed'
+              let issoft = false
+              let ishard = false
+
+              // record error in conversation log --------------------
+              conversationlog.push({
+                role: 'assistant',
+                error: displayerr,
+                timestamp: new Date().toISOString()
+              })
+
+              // parse nested json error payloads --------------------
+              try {
+                const parsed = JSON.parse(displayerr)
+                if (parsed.error?.code === 503 || parsed.error?.status === 'UNAVAILABLE') {
+                  displayerr = 'one second...'
+                  issoft = true
+                } else if (parsed.error?.code === 429 || parsed.error?.status === 'RESOURCE_EXHAUSTED') {
+                  const msg = (parsed.error.message || '').toLowerCase()
+                  if (msg.includes('quota') || msg.includes('daily') || msg.includes('exceeded')) {
+                    displayerr = 'limits reached. try again later!'
+                    ishard = true
+                  } else {
+                    displayerr = 'one second...'
+                    issoft = true
+                  }
+                } else if (parsed.error?.message) {
+                  displayerr = parsed.error.message.toLowerCase()
+                }
+              } catch {
+                const lower = displayerr.toLowerCase()
+                if (lower.includes('one second')) {
+                  issoft = true
+                } else if (lower.includes('limits reached')) {
+                  ishard = true
+                } else if (lower.includes('503') || lower.includes('unavailable') || lower.includes('overloaded')) {
+                  displayerr = 'one second...'
+                  issoft = true
+                } else if (lower.includes('429') || lower.includes('resource_exhausted')) {
+                  if (lower.includes('quota') || lower.includes('daily') || lower.includes('exceeded')) {
+                    displayerr = 'limits reached. try again later!'
+                    ishard = true
+                  } else {
+                    displayerr = 'one second...'
+                    issoft = true
+                  }
+                }
+              }
+
+              const errmsg = document.createElement('div')
+              errmsg.className = 'ai-msg agent'
+              if (issoft) {
+                errmsg.innerHTML = `<div class="msg-bubble" style="color:#777777;border-color:#1c1c1c;background-color:#080808">${displayerr}</div>`
+              } else if (ishard) {
+                errmsg.innerHTML = `<div class="msg-bubble" style="color:#ffaa00;border-color:#3d2f0a;background-color:#191408">${displayerr}</div>`
+              } else {
+                errmsg.innerHTML = `<div class="msg-bubble" style="color:#ff6b6b;border-color:#4a1515;background-color:#140505">${displayerr}</div>`
+              }
+              appendcopyactions(errmsg, displayerr)
+              aimessages.appendChild(errmsg)
+            }
+
+            aimessages.scrollTop = aimessages.scrollHeight
+          }
+
+          // check if detailed view is enabled for current user --------------------
+          export function isdetailedview() {
+            const userid = state.currentuser?.id || state.currentuser?.user_id
+            const isadmin = Boolean(state.currentuser?.admin)
+            const key = `mushnote_detailed_view_${userid || 'default'}`
+            const stored = localStorage.getItem(key) ?? localStorage.getItem(`gillium_detailed_view_${userid || 'default'}`)
+            if (stored === null) {
+              return isadmin
+            }
+            return stored === 'true'
+          }
+
+          // set detailed view preference in local storage --------------------
+          export function setdetailedview(enabled) {
+            const userid = state.currentuser?.id || state.currentuser?.user_id
+            const key = `mushnote_detailed_view_${userid || 'default'}`
+            localStorage.setItem(key, String(Boolean(enabled)))
+          }
+
+          // update ai context menu items state --------------------
+          function updatecontextmenuui() {
+            const isdetailed = isdetailedview()
+            const chk = document.getElementById('chk-detailed-view')
+            if (chk) {
+              chk.checked = isdetailed
+            }
+            if (ctxitemcopychat) {
+              if (state.currentuser?.admin) {
+                ctxitemcopychat.classList.remove('hidden')
+              } else {
+                ctxitemcopychat.classList.add('hidden')
               }
             }
           }
-        }
-      }
-    }
 
-    // render agent response --------------------
-    const agentmsg = document.createElement('div')
-    agentmsg.className = 'ai-msg agent'
-    agentmsg.innerHTML = `<div class="msg-bubble">${data.reply || '(no response)'}</div>`
+          // close custom context menu for ai assistant --------------------
+          function closeaicontextmenu() {
+            if (aicontextmenu) {
+              aicontextmenu.classList.add('hidden')
+            }
+          }
 
-    // render interactive options chips if present --------------------
-    if (data.options && data.options.length > 0) {
-      const optionsrow = document.createElement('div')
-      optionsrow.className = 'ai-options-row'
+          // initialize assistant chat form and context menu --------------------
+          export function initassistant() {
+            if (aiinput && state.ainame) {
+              aiinput.placeholder = `ask ${state.ainame} anything...`
+            }
 
-      for (const optiontext of data.options) {
-        const btn = document.createElement('button')
-        btn.type = 'button'
-        btn.className = 'ai-option-btn'
-        btn.textContent = optiontext
+            if (aiform) {
+              aiform.addEventListener('submit', (e) => {
+                e.preventDefault()
+                const prompt = aiinput?.value?.trim()
+                if (prompt) {
+                  senduserprompt(prompt)
+                }
+              })
+            }
 
-        btn.addEventListener('click', (e) => {
-          e.preventDefault()
-          e.stopPropagation()
+            // right click to open context menu for assistant --------------------
+            if (aidrawer) {
+              aidrawer.addEventListener('contextmenu', (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                  return
+                }
+                e.preventDefault()
+                if (!aicontextmenu) return
+                updatecontextmenuui()
+                aicontextmenu.style.left = `${e.clientX}px`
+                aicontextmenu.style.top = `${e.clientY}px`
+                aicontextmenu.classList.remove('hidden')
+              })
+            }
 
-          // disable all sibling buttons and highlight clicked --------------------
-          const allbtns = optionsrow.querySelectorAll('.ai-option-btn')
-          allbtns.forEach(b => b.classList.add('disabled'))
-          btn.classList.add('selected')
+            document.addEventListener('click', closeaicontextmenu)
 
-          // auto send selected answer --------------------
-          senduserprompt(optiontext)
-        })
+            // toggle detailed view checkbox --------------------
+            if (ctxitemdetailedview) {
+              ctxitemdetailedview.addEventListener('click', (e) => {
+                e.stopPropagation()
+                const nextstate = !isdetailedview()
+                setdetailedview(nextstate)
+                updatecontextmenuui()
+                closeaicontextmenu()
+              })
+            }
 
-        optionsrow.appendChild(btn)
-      }
-
-      agentmsg.appendChild(optionsrow)
-    }
-
-    appendcopyactions(agentmsg, data.reply || '')
-    aimessages.appendChild(agentmsg)
-
-    // fade and remove non-detailed activity status lines once done --------------------
-    if (!detailed && nonadminnodes.length > 0) {
-      for (const node of nonadminnodes) {
-        cleanactivitystatus(node, 800)
-      }
-    }
-
-    // update chat history with full sdk turns or fallback append --------------------
-    if (data.history && Array.isArray(data.history)) {
-      aichathistory = data.history
-    } else {
-      const modelturncontent = data.reply + (data.options?.length ? `\n<options>${JSON.stringify(data.options)}</options>` : '')
-      aichathistory.push({ role: 'user', content: prompt })
-      aichathistory.push({ role: 'model', content: modelturncontent })
-    }
-
-    // record assistant response in conversation log --------------------
-    conversationlog.push({
-      role: 'assistant',
-      thought: data.thought?.trim() || null,
-      tool_calls: data.tool_calls || [],
-      reply: data.reply || '',
-      options: data.options || [],
-      timestamp: new Date().toISOString()
-    })
-  } catch (err) {
-    statusmsg.remove()
-    let displayerr = err.message || 'request failed'
-    let issoft = false
-    let ishard = false
-
-    // record error in conversation log --------------------
-    conversationlog.push({
-      role: 'assistant',
-      error: displayerr,
-      timestamp: new Date().toISOString()
-    })
-
-    // parse nested json error payloads --------------------
-    try {
-      const parsed = JSON.parse(displayerr)
-      if (parsed.error?.code === 503 || parsed.error?.status === 'UNAVAILABLE') {
-        displayerr = 'one second...'
-        issoft = true
-      } else if (parsed.error?.code === 429 || parsed.error?.status === 'RESOURCE_EXHAUSTED') {
-        const msg = (parsed.error.message || '').toLowerCase()
-        if (msg.includes('quota') || msg.includes('daily') || msg.includes('exceeded')) {
-          displayerr = 'limits reached. try again later!'
-          ishard = true
-        } else {
-          displayerr = 'one second...'
-          issoft = true
-        }
-      } else if (parsed.error?.message) {
-        displayerr = parsed.error.message.toLowerCase()
-      }
-    } catch {
-      const lower = displayerr.toLowerCase()
-      if (lower.includes('one second')) {
-        issoft = true
-      } else if (lower.includes('limits reached')) {
-        ishard = true
-      } else if (lower.includes('503') || lower.includes('unavailable') || lower.includes('overloaded')) {
-        displayerr = 'one second...'
-        issoft = true
-      } else if (lower.includes('429') || lower.includes('resource_exhausted')) {
-        if (lower.includes('quota') || lower.includes('daily') || lower.includes('exceeded')) {
-          displayerr = 'limits reached. try again later!'
-          ishard = true
-        } else {
-          displayerr = 'one second...'
-          issoft = true
-        }
-      }
-    }
-
-    const errmsg = document.createElement('div')
-    errmsg.className = 'ai-msg agent'
-    if (issoft) {
-      errmsg.innerHTML = `<div class="msg-bubble" style="color:#777777;border-color:#1c1c1c;background-color:#080808">${displayerr}</div>`
-    } else if (ishard) {
-      errmsg.innerHTML = `<div class="msg-bubble" style="color:#ffaa00;border-color:#3d2f0a;background-color:#191408">${displayerr}</div>`
-    } else {
-      errmsg.innerHTML = `<div class="msg-bubble" style="color:#ff6b6b;border-color:#4a1515;background-color:#140505">${displayerr}</div>`
-    }
-    appendcopyactions(errmsg, displayerr)
-    aimessages.appendChild(errmsg)
-  }
-
-  aimessages.scrollTop = aimessages.scrollHeight
-}
-
-// check if detailed view is enabled for current user --------------------
-export function isdetailedview() {
-  const userid = state.currentuser?.id || state.currentuser?.user_id
-  const isadmin = Boolean(state.currentuser?.admin)
-  const key = `mushnote_detailed_view_${userid || 'default'}`
-  const stored = localStorage.getItem(key) ?? localStorage.getItem(`gillium_detailed_view_${userid || 'default'}`)
-  if (stored === null) {
-    return isadmin
-  }
-  return stored === 'true'
-}
-
-// set detailed view preference in local storage --------------------
-export function setdetailedview(enabled) {
-  const userid = state.currentuser?.id || state.currentuser?.user_id
-  const key = `mushnote_detailed_view_${userid || 'default'}`
-  localStorage.setItem(key, String(Boolean(enabled)))
-}
-
-// update ai context menu items state --------------------
-function updatecontextmenuui() {
-  const isdetailed = isdetailedview()
-  const chk = document.getElementById('chk-detailed-view')
-  if (chk) {
-    chk.checked = isdetailed
-  }
-  if (ctxitemcopychat) {
-    if (state.currentuser?.admin) {
-      ctxitemcopychat.classList.remove('hidden')
-    } else {
-      ctxitemcopychat.classList.add('hidden')
-    }
-  }
-}
-
-// close custom context menu for ai assistant --------------------
-function closeaicontextmenu() {
-  if (aicontextmenu) {
-    aicontextmenu.classList.add('hidden')
-  }
-}
-
-// initialize assistant chat form and context menu --------------------
-export function initassistant() {
-  if (aiinput && state.ainame) {
-    aiinput.placeholder = `ask ${state.ainame} anything...`
-  }
-
-  if (aiform) {
-    aiform.addEventListener('submit', (e) => {
-      e.preventDefault()
-      const prompt = aiinput?.value?.trim()
-      if (prompt) {
-        senduserprompt(prompt)
-      }
-    })
-  }
-
-  // right click to open context menu for assistant --------------------
-  if (aidrawer) {
-    aidrawer.addEventListener('contextmenu', (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
-        return
-      }
-      e.preventDefault()
-      if (!aicontextmenu) return
-      updatecontextmenuui()
-      aicontextmenu.style.left = `${e.clientX}px`
-      aicontextmenu.style.top = `${e.clientY}px`
-      aicontextmenu.classList.remove('hidden')
-    })
-  }
-
-  document.addEventListener('click', closeaicontextmenu)
-
-  // toggle detailed view checkbox --------------------
-  if (ctxitemdetailedview) {
-    ctxitemdetailedview.addEventListener('click', (e) => {
-      e.stopPropagation()
-      const nextstate = !isdetailedview()
-      setdetailedview(nextstate)
-      updatecontextmenuui()
-      closeaicontextmenu()
-    })
-  }
-
-  // copy full conversation with system prompt in json format --------------------
-  if (ctxitemcopychat) {
-    ctxitemcopychat.addEventListener('click', async () => {
-      const payload = {
-        system_prompt: lastsystemprompt || null,
-        conversation: conversationlog
-      }
-      const json = JSON.stringify(payload, null, 2)
-      try {
-        await navigator.clipboard.writeText(json)
-        ctxitemcopychat.innerHTML = '<span style="color:#10b981">copied</span>'
-        setTimeout(() => {
-          ctxitemcopychat.innerHTML = '<img class="btn-icon-img" src="/resources/icons/files/text.png" alt="copy"> copy conversation'
-          closeaicontextmenu()
-        }, 900)
-      } catch (err) {
-        console.error('failed to copy conversation to clipboard', err)
-        closeaicontextmenu()
-      }
-    })
-  }
-}
+            // copy full conversation with system prompt in json format --------------------
+            if (ctxitemcopychat) {
+              ctxitemcopychat.addEventListener('click', async () => {
+                const payload = {
+                  system_prompt: lastsystemprompt || null,
+                  conversation: conversationlog
+                }
+                const json = JSON.stringify(payload, null, 2)
+                try {
+                  await navigator.clipboard.writeText(json)
+                  ctxitemcopychat.innerHTML = '<span style="color:#10b981">copied</span>'
+                  setTimeout(() => {
+                    ctxitemcopychat.innerHTML = '<img class="btn-icon-img" src="/resources/icons/files/text.png" alt="copy"> copy conversation'
+                    closeaicontextmenu()
+                  }, 900)
+                } catch (err) {
+                  console.error('failed to copy conversation to clipboard', err)
+                  closeaicontextmenu()
+                }
+              })
+            }
+          }
 

@@ -107,6 +107,7 @@ more ideas:
 - conversation compression (a little aggresive, saving money focus, but also make sure tool uses are quickly folded)
 - some sort of graphing capability (flow chart and graphs)
 - make funny little hand-drawn icons for every action and button
+- highlight text --> right click --> ask ai
 
 name ideas:
 - mushnote

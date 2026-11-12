@@ -707,19 +707,19 @@ export async function loadnotes() {
     }
 
     // ensure current folder exists in accessible notes unless it is archive or system --------------------
-    if (state.currentfolder && state.currentfolder !== 'archive' && state.currentfolder !== 'system') {
-      const folderprefix = state.currentfolder.endsWith('/') ? state.currentfolder : `${state.currentfolder}/`
-      const folderexists = state.allnotes.some(n => n.note_id.startsWith(folderprefix))
-      if (!folderexists) {
-        const parentparts = state.currentfolder.split('/').slice(0, -1)
-        state.currentfolder = parentparts.join('/')
+      if (state.currentfolder && state.currentfolder !== 'archive' && state.currentfolder !== 'system') {
+        const folderprefix = state.currentfolder.endsWith('/') ? state.currentfolder : `${state.currentfolder}/`
+        const folderexists = state.allnotes.some(n => n.note_id.startsWith(folderprefix))
+        if (!folderexists) {
+          const parentparts = state.currentfolder.split('/').slice(0, -1)
+          state.currentfolder = parentparts.join('/')
+        }
       }
-    }
 
-    // always render folder view so directory tree is always populated --------------------
-    renderfolderview()
-  } catch (err) {
-    console.error('failed to load notes', err)
+      // always render folder view so directory tree is always populated --------------------
+      renderfolderview()
+    } catch (err) {
+      console.error('failed to load notes', err)
+    }
   }
-}
 
