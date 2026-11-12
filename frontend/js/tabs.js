@@ -1,5 +1,5 @@
 import { state } from './state.js'
-import { opennote, closenote, saveworkspacestate } from './editor.js'
+import { opennote, closenote, saveworkspacestate, isnoteidmatch } from './editor.js'
 
 // dom elements for tabs --------------------
 const editortabsbar = document.getElementById('editor-tabs-bar')
@@ -55,7 +55,7 @@ export function rendertabs() {
     const tabname = tabnoteid.split('/').pop()
 
     const tab = document.createElement('div')
-    tab.className = `editor-tab ${tabnoteid === state.activenoteid ? 'active' : ''}`
+    tab.className = `editor-tab ${isnoteidmatch(tabnoteid, state.activenoteid) ? 'active' : ''}`
     tab.dataset.index = i
     tab.dataset.noteId = tabnoteid
     tab.title = tabnoteid
@@ -234,12 +234,20 @@ if (editortabsbar) {
 
 // close specific tab --------------------
 export function closetab(noteid) {
-  const index = state.opentabs.indexOf(noteid)
-  if (index === -1) return
+  const wasactive = isnoteidmatch(state.activenoteid, noteid)
+  const index = state.opentabs.findIndex(t => isnoteidmatch(t, noteid))
+  if (index === -1) {
+    if (wasactive) {
+      closenote()
+    }
+    return
+  }
 
+  // remove tab and any matching duplicates --------------------
   state.opentabs.splice(index, 1)
+  state.opentabs = state.opentabs.filter(t => !isnoteidmatch(t, noteid))
 
-  if (state.activenoteid === noteid) {
+  if (wasactive) {
     if (state.opentabs.length > 0) {
       // switch to neighbor tab --------------------
       const nextindex = Math.min(index, state.opentabs.length - 1)

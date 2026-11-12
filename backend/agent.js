@@ -75,7 +75,7 @@ Rules:
 
 // execute chat request with autonomous tool handling --------------------
 export async function runagentchat(prompt, options = {}) {
-  const { active_user_id, is_admin = false, active_note_id, open_tabs = [], history = [] } = options
+  const { active_user_id, is_admin = false, active_note_id, open_tabs = [], history = [], attachments = [], onProgress } = options
   const conf = loadconfig()
   const vaultdir = getvaultpath(conf)
   const historydir = gethistorypath(conf)
@@ -153,19 +153,40 @@ export async function runagentchat(prompt, options = {}) {
     config: {
       systemInstruction: systeminstruction,
       tools: [{ functionDeclarations: tooldeclarations }],
-      thinkingConfig: { thinkingLevel: 'minimal' }
+      thinkingConfig: { thinkingLevel: 'minimal' },
+      mediaResolution: 'MEDIA_RESOLUTION_LOW'
     }
   })
 
   const toolcallsexecuted = []
 
-  // execute send message with automatic retries for transient overload --------------------
-  async function sendwithretry(msgpayload, maxtries = 3) {
+  // execute send message stream with automatic retries for transient overload --------------------
+  async function sendstreamwithretry(msgpayload, maxtries = 3) {
     let attempt = 0
     let delay = 1500
     while (attempt < maxtries) {
       try {
-        return await chat.sendMessage({ message: msgpayload })
+        const stream = await chat.sendMessageStream({ message: msgpayload })
+        let turntext = ''
+        const functioncalls = []
+
+        for await (const chunk of stream) {
+          if (chunk.functionCalls && chunk.functionCalls.length > 0) {
+            functioncalls.push(...chunk.functionCalls)
+          }
+          const text = chunk.text
+          if (text) {
+            turntext += text
+            if (onProgress) {
+              onProgress('chunk', { text, fulltext: turntext })
+            }
+          }
+        }
+
+        return {
+          text: turntext,
+          functionCalls: functioncalls
+        }
       } catch (err) {
         attempt += 1
         const errmsg = String(err.message || err)
@@ -181,7 +202,26 @@ export async function runagentchat(prompt, options = {}) {
     }
   }
 
-  let response = await sendwithretry(prompt)
+  // construct initial message parts with text and attachments --------------------
+  const messageparts = []
+  if (prompt && typeof prompt === 'string') {
+    messageparts.push({ text: prompt })
+  }
+  if (Array.isArray(attachments) && attachments.length > 0) {
+    for (const att of attachments) {
+      if (att && att.data && att.mimeType) {
+        messageparts.push({
+          inlineData: {
+            mimeType: att.mimeType,
+            data: att.data
+          }
+        })
+      }
+    }
+  }
+
+  const initialpayload = messageparts.length > 0 ? messageparts : [{ text: '' }]
+  let response = await sendstreamwithretry(initialpayload)
   let iterations = 0
 
   // tool execution loop --------------------
@@ -190,6 +230,10 @@ export async function runagentchat(prompt, options = {}) {
     const functionresponses = []
 
     for (const call of response.functionCalls) {
+      if (onProgress) {
+        onProgress('status', { status: `running ${call.name}...` })
+      }
+
       const tooloutput = await executetool(call.name, call.args, {
         vaultdir,
         historydir,
@@ -205,6 +249,14 @@ export async function runagentchat(prompt, options = {}) {
         output: tooloutput
       })
 
+      if (onProgress) {
+        onProgress('tool_call', {
+          name: call.name,
+          args: call.args,
+          output: tooloutput
+        })
+      }
+
       functionresponses.push({
         functionResponse: {
           name: call.name,
@@ -213,12 +265,16 @@ export async function runagentchat(prompt, options = {}) {
       })
     }
 
-    response = await sendwithretry(functionresponses)
+    if (onProgress) {
+      onProgress('status', { status: 'thinking...' })
+    }
+
+    response = await sendstreamwithretry(functionresponses)
   }
 
   const rawtext = response.text || ''
   const thoughtmatch = rawtext.match(/<thought>([\s\S]*?)<\/thought>/i)
-  const thought = thoughtmatch ? thoughtmatch[1].trim() : ''
+  const thought = thoughtmatch ? thoughtmatch[1].replace(/<\/?[a-zA-Z0-9_\-:]+(?:\s+[^>]*)?>/gi, '').trim() : ''
   let cleantext = rawtext.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
 
   // extract interactive response options if provided --------------------
@@ -257,6 +313,9 @@ export async function runagentchat(prompt, options = {}) {
       cleantext = cleantext.slice(0, fallbackmatch.index).trim()
     }
   }
+
+  // strip any remaining xml tags from reply --------------------
+  cleantext = cleantext.replace(/<\/?[a-zA-Z0-9_\-:]+(?:\s+[^>]*)?>/gi, '').trim()
 
   let updatedhistory = []
   try {

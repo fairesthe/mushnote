@@ -55,10 +55,12 @@ export function initvaultwatcher(vaultdir, historydir, wss) {
   function handlefilechange(relpath) {
     const fullpath = path.join(vaultdir, ...relpath.split('/'))
 
-    // handle external file deletion --------------------
+    // handle file deletion --------------------
     if (!fs.existsSync(fullpath)) {
-      if (isinternaldelete(fullpath)) return
-      handleexternaldelete(vaultdir, historydir, relpath)
+      const internal = isinternaldelete(fullpath)
+      if (!internal) {
+        handleexternaldelete(vaultdir, historydir, relpath)
+      }
       broadcastvaultchange({
         type: 'vault_changed',
         action: 'delete',

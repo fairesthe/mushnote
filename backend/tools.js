@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { listnotes, readnote, writenote, movenoteorfolder, copynoteorfolder, deletenote, deletefolder } from './vault.js'
 import { gethistory } from './history.js'
-import { getdoc, applydiff, migratedocentry, unliteralescapes } from './sync.js'
+import { getdoc, applydiff, migratedocentry, unliteralescapes, streaminsert } from './sync.js'
 
 // tool schema declarations for gemini --------------------
 export const tooldeclarations = [
@@ -452,8 +452,12 @@ export async function executetool(name, args, context) {
     const entry = getdoc(vaultdir, historydir, noteid)
     entry.doc.transact(() => {
       entry.ytext.delete(0, entry.ytext.length)
-      entry.ytext.insert(0, body)
     }, 'ai')
+
+    // stream initial content in natural multi-word chunks into file --------------------
+    const editid = `ai_create_${Date.now()}`
+    await streaminsert(entry, 0, body, { author: 'ai', edit_id: editid })
+
     entry.flushtodisk('ai')
 
     // save created note id onto args for client --------------------
@@ -574,7 +578,7 @@ export async function executetool(name, args, context) {
   // edit note with diff --------------------
   if (name === 'note_edit_diff') {
     try {
-      const updated = applydiff(vaultdir, historydir, args.note_id, {
+      const updated = await applydiff(vaultdir, historydir, args.note_id, {
         mode: args.mode,
         target_text: unliteralescapes(args.target_text),
         replacement_text: unliteralescapes(args.replacement_text),

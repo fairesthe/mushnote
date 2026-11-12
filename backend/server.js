@@ -26,7 +26,8 @@ const server = http.createServer(app)
 const port = config.server?.port || 3000
 const host = config.server?.host || 'localhost'
 
-app.use(express.json())
+app.use(express.json({ limit: '50mb' }))
+app.use(express.urlencoded({ extended: true, limit: '50mb' }))
 
 // serve static frontend and resources --------------------
 const frontenddir = path.join(rootdir, 'frontend')
@@ -514,7 +515,7 @@ app.post('/api/notes', (req, res) => {
 })
 
 // edit note with diff --------------------
-app.post('/api/notes/:id/diff', (req, res) => {
+app.post('/api/notes/:id/diff', async (req, res) => {
   const token = extracttoken(req)
   const session = getsession(token)
   if (!checksystemaccess(req.params.id, session)) {
@@ -522,7 +523,7 @@ app.post('/api/notes/:id/diff', (req, res) => {
   }
 
   try {
-    const updated = applydiff(vaultdir, historydir, req.params.id, req.body)
+    const updated = await applydiff(vaultdir, historydir, req.params.id, req.body)
     res.json({ status: 'ok', content: updated })
   } catch (err) {
     res.status(400).json({ error: err.message })
@@ -676,10 +677,137 @@ app.post('/api/agent/chat', async (req, res) => {
   const session = getsession(token)
   const activeuserid = session ? session.user_id : 'wyatt'
   const isadmin = session ? Boolean(session.admin) : false
-  const { message, history = [], active_note_id, open_tabs = [] } = req.body
+  const { message = '', history = [], active_note_id, open_tabs = [], attachments = [] } = req.body
 
-  if (!message) {
-    return res.status(400).json({ error: 'message is required' })
+  if (!message && (!attachments || attachments.length === 0)) {
+    return res.status(400).json({ error: 'message or attachment is required' })
+  }
+
+  // set up server-sent events headers for per-token streaming --------------------
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  if (res.flushHeaders) res.flushHeaders()
+
+  function sendevent(event, data) {
+    if (res.writableEnded) return
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+  }
+
+  let fulltext = ''
+  let replyemitted = ''
+  let thoughtdone = false
+  let thoughtemitted = ''
+  let tokenflushdebouncetimer = null
+  let pendingtokendata = null
+
+  // strip any xml tags like <tag> or </tag> --------------------
+  function stripalltags(str) {
+    if (!str) return ''
+    return str.replace(/<\/?[a-zA-Z0-9_\-:]+(?:\s+[^>]*)?>/gi, '')
+  }
+
+  // hold back trailing unclosed tag in progress --------------------
+  function cliptrailingtag(str) {
+    if (!str) return ''
+    const lastopen = str.lastIndexOf('<')
+    if (lastopen !== -1) {
+      const afteropen = str.slice(lastopen)
+      if (!afteropen.includes('>')) {
+        return str.slice(0, lastopen)
+      }
+    }
+    return str
+  }
+
+  function flushpendingtoken() {
+    if (tokenflushdebouncetimer) {
+      clearTimeout(tokenflushdebouncetimer)
+      tokenflushdebouncetimer = null
+    }
+    if (pendingtokendata) {
+      const data = pendingtokendata
+      pendingtokendata = null
+      sendevent('token', data)
+    }
+  }
+
+  function scheduletokenemit(delta, full) {
+    pendingtokendata = { delta, full }
+    if (!tokenflushdebouncetimer) {
+      tokenflushdebouncetimer = setTimeout(() => {
+        flushpendingtoken()
+      }, 70)
+    }
+  }
+
+  function handlechunk(chunk) {
+    fulltext += chunk
+
+    const thoughtstart = fulltext.search(/<thought>/i)
+    const thoughtend = fulltext.search(/<\/thought>/i)
+
+    if (thoughtstart !== -1 && !thoughtdone) {
+      if (thoughtend !== -1) {
+        thoughtdone = true
+        const rawthought = fulltext.slice(thoughtstart + 9, thoughtend)
+        const cleanedthought = stripalltags(rawthought).trim()
+        const thoughtdelta = cleanedthought.slice(thoughtemitted.length)
+        if (thoughtdelta) {
+          thoughtemitted = cleanedthought
+          sendevent('thought', { delta: thoughtdelta, full: thoughtemitted, done: true })
+        }
+
+        let after = fulltext.slice(thoughtend + 10)
+        const optidx = after.search(/<options/i)
+        if (optidx !== -1) {
+          after = after.slice(0, optidx)
+        }
+        let cleanreply = stripalltags(after)
+        cleanreply = cliptrailingtag(cleanreply)
+        const delta = cleanreply.slice(replyemitted.length)
+        if (delta) {
+          replyemitted = cleanreply
+          scheduletokenemit(delta, replyemitted)
+        }
+      } else {
+        let curthought = fulltext.slice(thoughtstart + 9)
+        curthought = stripalltags(curthought)
+        curthought = cliptrailingtag(curthought)
+        const delta = curthought.slice(thoughtemitted.length)
+        if (delta) {
+          thoughtemitted = curthought
+          sendevent('thought', { delta, full: curthought, done: false })
+        }
+      }
+    } else if (thoughtstart === -1 || thoughtdone) {
+      if (!thoughtdone) {
+        if (fulltext.trimStart().startsWith('<') && !fulltext.includes('>')) {
+          return
+        }
+        if (fulltext.includes('>') && !/<thought>/i.test(fulltext)) {
+          thoughtdone = true
+        } else if (fulltext.length > 20 && !/<thought/i.test(fulltext)) {
+          thoughtdone = true
+        }
+      }
+
+      if (thoughtdone) {
+        const thoughtmatch = fulltext.match(/<\/thought>/i)
+        let after = thoughtmatch ? fulltext.slice(thoughtmatch.index + 10) : fulltext
+        const optidx = after.search(/<options/i)
+        if (optidx !== -1) {
+          after = after.slice(0, optidx)
+        }
+        let cleanreply = stripalltags(after)
+        cleanreply = cliptrailingtag(cleanreply)
+        const delta = cleanreply.slice(replyemitted.length)
+        if (delta) {
+          replyemitted = cleanreply
+          scheduletokenemit(delta, replyemitted)
+        }
+      }
+    }
   }
 
   try {
@@ -688,9 +816,21 @@ app.post('/api/agent/chat', async (req, res) => {
       is_admin: isadmin,
       active_note_id,
       open_tabs,
-      history
+      history,
+      attachments,
+      onProgress: (event, data) => {
+        if (event === 'chunk') {
+          handlechunk(data.text)
+        } else {
+          flushpendingtoken()
+          sendevent(event, data)
+        }
+      }
     })
-    res.json(result)
+
+    flushpendingtoken()
+    sendevent('done', result)
+    res.end()
   } catch (err) {
     let cleanmessage = err.message || 'unknown error'
     let errortype = 'error'
@@ -705,7 +845,6 @@ app.post('/api/agent/chat', async (req, res) => {
           cleanmessage = 'one second...'
           errortype = 'soft'
         } else if (code === 429 || status === 'RESOURCE_EXHAUSTED') {
-          // detect whether quota is exhausted or temporary per-minute rate limit --------------------
           const msg = (parsed.error.message || '').toLowerCase()
           if (msg.includes('quota') || msg.includes('daily') || msg.includes('exceeded')) {
             cleanmessage = 'limits reached. try again later!'
@@ -734,7 +873,8 @@ app.post('/api/agent/chat', async (req, res) => {
       }
     }
 
-    res.status(500).json({ error: cleanmessage, error_type: errortype })
+    sendevent('error', { error: cleanmessage, error_type: errortype })
+    res.end()
   }
 })
 

@@ -1,3 +1,5 @@
+import { state } from './state.js'
+
 // dom elements for layout --------------------
 const sidebarpane = document.getElementById('sidebar-pane')
 const aidrawer = document.getElementById('ai-drawer')
@@ -25,9 +27,13 @@ export function updatetogglebuttons() {
     tabtoggleai.classList.toggle('panel-open', aiopen)
     tabtoggleai.classList.toggle('panel-closed', !aiopen)
     tabtoggleai.title = aiopen ? 'collapse ai assistant' : 'open ai assistant'
-    tabtoggleai.innerHTML = aiopen
-      ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>'
-      : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>'
+    if (aiopen) {
+      tabtoggleai.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>'
+    } else {
+      const avatar = state.aiavatar || '/avatars/ai.jpg'
+      const name = state.ainame || 'assistant'
+      tabtoggleai.innerHTML = `<img class="tab-toggle-ai-avatar" src="${avatar}" alt="${name}"><span class="tab-toggle-ai-name">${name}</span>`
+    }
   }
 }
 

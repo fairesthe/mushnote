@@ -10,6 +10,7 @@ export const state = {
   },
   useravatarmap: {},
   showsystemfolder: false,
-  ainame: 'assistant'
+  ainame: 'assistant',
+  aiavatar: '/avatars/ai.jpg'
 }
 

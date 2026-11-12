@@ -329,10 +329,45 @@ body.is-resizing .floating-side-tab {
 
 .floating-side-tab.tab-right.panel-open {
   right: -12px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  border-radius: 4px;
 }
 
 .floating-side-tab.tab-right.panel-closed {
-  right: 8px;
+  right: 10px;
+  width: auto;
+  min-width: 0;
+  height: 24px;
+  padding: 0 9px 0 4px;
+  border-radius: 12px;
+  gap: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-toggle-ai-avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: block;
+}
+
+.tab-toggle-ai-name {
+  font-size: 11px;
+  font-weight: 500;
+  color: #cccccc;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.floating-side-tab.tab-right.panel-closed:hover .tab-toggle-ai-name {
+  color: #ffffff;
 }
 
 /* draggable browser style tab bar -------------------- */
@@ -343,7 +378,7 @@ body.is-resizing .floating-side-tab {
   min-height: 38px;
   background-color: #050505;
   border-bottom: 1px solid var(--border-color);
-  padding: 0 36px 0 36px;
+  padding: 0 110px 0 36px;
   overflow-x: auto;
   overflow-y: hidden;
   user-select: none;
@@ -1133,60 +1168,199 @@ body.is-dragging-tab * {
   width: 100%;
 }
 
+/* editor top toolbar -------------------- */
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 16px;
+  background-color: var(--bg-color);
+  border-bottom: 1px solid var(--border-color);
+  overflow-x: auto;
+  flex-shrink: 0;
+  user-select: none;
+  z-index: 10;
+}
+
+.editor-toolbar::-webkit-scrollbar {
+  height: 4px;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.toolbar-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--muted-color);
+  font-size: 11px;
+  font-family: inherit;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  line-height: 1.2;
+}
+
+.toolbar-btn:hover {
+  background-color: #1e1e1e;
+  color: var(--text-color);
+}
+
+.toolbar-btn.is-active {
+  background-color: #2a2a2a;
+  color: #ffffff;
+  border-color: var(--border-color);
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 14px;
+  background-color: var(--border-color);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* tiptap wysiwyg editor body -------------------- */
 .editor-body {
   flex-grow: 1;
   position: relative;
-  height: 100vh;
-  overflow: hidden;
+  height: calc(100vh - 78px);
+  overflow-y: auto;
 }
 
-.editor-backdrop {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 44px 36px 36px 36px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
-  font-size: 14px;
-  line-height: 1.65;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  overflow-y: scroll;
-  overflow-x: hidden;
-  color: transparent;
-  pointer-events: none;
-  user-select: none;
-}
-
-/* hide scrollbar on backdrop so only textarea scrollbar shows -------------------- */
-.editor-backdrop::-webkit-scrollbar {
-  display: none;
-}
-.editor-backdrop {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-.note-textarea {
-  position: relative;
-  z-index: 2;
-  width: 100%;
-  height: 100vh;
-  background-color: transparent;
-  color: var(--text-color);
-  border: none;
+.tiptap-editor {
+  min-height: 100%;
+  padding: 28px 40px 120px 40px;
   outline: none;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--text-color);
+}
+
+.tiptap-editor .ProseMirror {
+  outline: none;
+  min-height: 300px;
+}
+
+/* markdown element styles -------------------- */
+.tiptap-editor h1 {
+  font-size: 26px;
+  font-weight: 700;
+  margin: 24px 0 12px 0;
+  color: #ffffff;
+  line-height: 1.3;
+}
+
+.tiptap-editor h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 20px 0 10px 0;
+  color: #f3f4f6;
+  line-height: 1.35;
+}
+
+.tiptap-editor h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 16px 0 8px 0;
+  color: #e5e7eb;
+  line-height: 1.4;
+}
+
+.tiptap-editor p {
+  margin: 0 0 12px 0;
+}
+
+.tiptap-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #555555;
+  pointer-events: none;
+  height: 0;
+}
+
+.tiptap-editor ul,
+.tiptap-editor ol {
+  padding-left: 24px;
+  margin: 0 0 12px 0;
+}
+
+.tiptap-editor li {
+  margin-bottom: 4px;
+}
+
+.tiptap-editor ul[data-type="taskList"] {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px 0;
+}
+
+.tiptap-editor ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tiptap-editor ul[data-type="taskList"] li > label {
+  margin-right: 4px;
+  user-select: none;
+  cursor: pointer;
+}
+
+.tiptap-editor ul[data-type="taskList"] li > label input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--accent-color, #ffffff);
+}
+
+.tiptap-editor ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+}
+
+.tiptap-editor blockquote {
+  border-left: 3px solid #444444;
+  padding-left: 14px;
+  margin: 0 0 14px 0;
+  color: var(--muted-color);
+  font-style: italic;
+}
+
+.tiptap-editor hr {
+  border: none;
+  border-top: 1px solid var(--border-color);
+  margin: 24px 0;
+}
+
+.tiptap-editor code {
+  background-color: #1a1a1a;
+  color: #f43f5e;
+  padding: 2px 5px;
+  border-radius: 4px;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
-  font-size: 14px;
-  line-height: 1.65;
-  padding: 44px 36px 36px 36px;
-  resize: none;
-  tab-size: 2;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  overflow-y: scroll;
-  overflow-x: hidden;
+  font-size: 13px;
+}
+
+.tiptap-editor pre {
+  background-color: #121212;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 0 0 14px 0;
+  overflow-x: auto;
+}
+
+.tiptap-editor pre code {
+  background: transparent;
+  color: #e2e8f0;
+  padding: 0;
+  border-radius: 0;
+  font-size: 13px;
 }
 
 /* user edit flash highlight -------------------- */
@@ -1199,21 +1373,125 @@ body.is-dragging-tab * {
   box-shadow: 0 0 8px var(--flash-user-glow, rgba(59, 130, 246, 0.3));
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
-  animation: editfade 2.2s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+  animation: textflashfade 2.2s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
 }
 
-@keyframes editfade {
+.tiptap-editor .ProseMirror .edit-flash {
+  background-color: var(--flash-user-bg, rgba(59, 130, 246, 0.28));
+  outline: 1.5px solid var(--flash-user-border, rgba(59, 130, 246, 0.75));
+  border-radius: 3px;
+  box-shadow: 0 0 8px var(--flash-user-glow, rgba(59, 130, 246, 0.35));
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  animation: textflashfade 2.2s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+
+/* fade out highlight styles without touching text opacity -------------------- */
+@keyframes textflashfade {
+  0% {
+    background-color: var(--flash-user-bg, rgba(59, 130, 246, 0.28));
+    outline-color: var(--flash-user-border, rgba(59, 130, 246, 0.75));
+    border-color: var(--flash-user-border, rgba(59, 130, 246, 0.7));
+    box-shadow: 0 0 8px var(--flash-user-glow, rgba(59, 130, 246, 0.35));
+  }
+  25% {
+    background-color: var(--flash-user-bg, rgba(59, 130, 246, 0.28));
+    outline-color: var(--flash-user-border, rgba(59, 130, 246, 0.75));
+    border-color: var(--flash-user-border, rgba(59, 130, 246, 0.7));
+    box-shadow: 0 0 8px var(--flash-user-glow, rgba(59, 130, 246, 0.35));
+  }
+  100% {
+    background-color: transparent;
+    outline-color: transparent;
+    border-color: transparent;
+    box-shadow: 0 0 0 transparent;
+  }
+}
+
+/* user edit deletion marker showing empty highlight over deleted area -------------------- */
+.edit-delete-marker {
+  position: relative;
+  display: inline;
+  background-color: var(--flash-user-bg, rgba(59, 130, 246, 0.28));
+  outline: 1.5px solid var(--flash-user-border, rgba(59, 130, 246, 0.75));
+  border-radius: 3px;
+  box-shadow: 0 0 8px var(--flash-user-glow, rgba(59, 130, 246, 0.35));
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  color: transparent !important;
+  text-decoration: none !important;
+  pointer-events: none;
+  user-select: none;
+  animation: deleteflashfade 2.2s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+
+.tiptap-editor .ProseMirror .edit-delete-marker {
+  background-color: var(--flash-user-bg, rgba(59, 130, 246, 0.28));
+  outline: 1.5px solid var(--flash-user-border, rgba(59, 130, 246, 0.75));
+  border-radius: 3px;
+  box-shadow: 0 0 8px var(--flash-user-glow, rgba(59, 130, 246, 0.35));
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  color: transparent !important;
+  text-decoration: none !important;
+  animation: deleteflashfade 2.2s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+
+.edit-delete-marker.is-empty {
+  display: inline-block;
+  width: 8px;
+  height: 1.15em;
+  margin: 0 2px;
+  vertical-align: text-bottom;
+}
+
+.edit-delete-text {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  padding: 0 2px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: transparent !important;
+  text-decoration: none !important;
+  user-select: none;
+}
+
+/* fade out deletion marker -------------------- */
+@keyframes deleteflashfade {
+  0% {
+    background-color: var(--flash-user-bg, rgba(59, 130, 246, 0.28));
+    outline-color: var(--flash-user-border, rgba(59, 130, 246, 0.75));
+    box-shadow: 0 0 8px var(--flash-user-glow, rgba(59, 130, 246, 0.35));
+    opacity: 1;
+  }
+  25% {
+    background-color: var(--flash-user-bg, rgba(59, 130, 246, 0.28));
+    outline-color: var(--flash-user-border, rgba(59, 130, 246, 0.75));
+    box-shadow: 0 0 8px var(--flash-user-glow, rgba(59, 130, 246, 0.35));
+    opacity: 1;
+  }
+  100% {
+    background-color: transparent;
+    outline-color: transparent;
+    box-shadow: 0 0 0 transparent;
+    opacity: 0;
+  }
+}
+
+/* fade out avatar badge and deletion marker -------------------- */
+@keyframes badgefade {
   0% {
     opacity: 1;
-    transform: scale(1.02);
+    transform: scale(1.05);
   }
-  20% {
+  25% {
     opacity: 1;
     transform: scale(1);
   }
   100% {
     opacity: 0;
-    transform: scale(1);
+    transform: scale(0.9);
   }
 }
 
@@ -1246,6 +1524,7 @@ body.is-dragging-tab * {
   pointer-events: none;
   user-select: none;
   z-index: 10;
+  animation: badgefade 2.2s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
 }
 
 .edit-user-img {
@@ -1516,9 +1795,9 @@ body.is-dragging-tab * {
 
 /* ai agent drawer -------------------- */
 .ai-drawer {
-  width: 330px;
+  width: 440px;
   min-width: 0;
-  max-width: 700px;
+  max-width: 800px;
   height: 100vh;
   border-left: 1px solid var(--border-color);
   background-color: #000000;
@@ -1941,37 +2220,219 @@ body.is-dragging-tab * {
   pointer-events: none;
 }
 
+/* ai chat input area -------------------- */
 .ai-input-wrap {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   padding: 10px 12px;
   border-top: 1px solid var(--border-color);
+  background-color: var(--bg-color);
+  box-sizing: border-box;
 }
 
-.ai-input {
-  flex-grow: 1;
+/* attached files preview row at top of input in rounded squares -------------------- */
+.ai-attachments-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+
+.attachment-chip {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  border-radius: 10px;
+  background-color: #141414;
+  border: 1px solid #2b2b2b;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.attachment-chip img.attachment-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.attachment-chip .attachment-icon-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.attachment-chip .attachment-badge {
+  font-size: 9px;
+  font-weight: 700;
+  color: #a0a0a0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.attachment-chip .attachment-name {
+  font-size: 8px;
+  color: #737373;
+  max-width: 48px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chip .attachment-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.85);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.8;
+  transition: opacity 0.12s;
+  z-index: 2;
+}
+
+.attachment-chip .attachment-remove:hover {
+  opacity: 1;
+  background-color: #ef4444;
+}
+
+/* chat input box with attach button at bottom left -------------------- */
+.ai-input-box {
+  display: flex;
+  flex-direction: column;
   background-color: #000000;
   border: 1px solid #282828;
-  border-radius: 6px;
-  padding: 8px 10px;
-  color: #ffffff;
-  font-size: 13px;
-  outline: none;
+  border-radius: 8px;
+  padding: 8px 10px 8px 10px;
+  gap: 6px;
+  transition: border-color 0.15s ease;
+  box-sizing: border-box;
 }
 
-.ai-input:focus {
+.ai-input-box:focus-within {
   border-color: #ffffff;
 }
 
+.ai-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  outline: none;
+  resize: none;
+  min-height: 48px;
+  max-height: 160px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.ai-input-bottom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.btn-attach {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--muted-color);
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+
+.btn-attach:hover {
+  color: #ffffff;
+  background-color: #222222;
+}
+
+.btn-attach svg {
+  display: block;
+}
+
 .btn-send {
-  padding: 8px 12px;
+  height: 26px;
+  padding: 0 12px;
   background-color: #ffffff;
   color: #000000;
   border: none;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+}
+
+.btn-send:hover {
+  background-color: #e5e5e5;
+}
+
+/* attachments rendered in user message bubbles -------------------- */
+.msg-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.msg-attachment-img {
+  width: 100px;
+  height: 100px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid #333333;
+}
+
+.msg-attachment-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #1a1a1a;
+  border: 1px solid #333333;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: #e5e5e5;
+}
+
+.msg-attachment-pill svg {
+  flex-shrink: 0;
 }
 
 /* custom context menu -------------------- */

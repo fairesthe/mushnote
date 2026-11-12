@@ -1,6 +1,6 @@
 import { api } from './api.js'
 import { state } from './state.js'
-import { opennote, closenote, saveworkspacestate, loadworkspacestate } from './editor.js'
+import { opennote, closenote, saveworkspacestate, loadworkspacestate, isnoteidmatch } from './editor.js'
 import { closetab, rendertabs } from './tabs.js'
 
 // dom elements for file navigation --------------------
@@ -197,7 +197,7 @@ export function renderfolderview() {
     row.className = 'folder-row is-file'
     row.dataset.noteId = file.id
 
-    if (file.id === state.activenoteid) {
+    if (isnoteidmatch(file.id, state.activenoteid)) {
       row.classList.add('active')
     }
 
@@ -209,7 +209,7 @@ export function renderfolderview() {
     `
     // clicking open note closes it otherwise replace current tab --------------------
     row.addEventListener('click', () => {
-      if (state.activenoteid === file.id) {
+      if (isnoteidmatch(state.activenoteid, file.id)) {
         closetab(file.id)
       } else {
         opennote(file.id, { replacecurrent: true })
@@ -232,7 +232,7 @@ export function updateactivefilerow() {
   if (!folderitems) return
   const rows = folderitems.querySelectorAll('.folder-row.is-file')
   for (const row of rows) {
-    if (row.dataset.noteId === state.activenoteid) {
+    if (isnoteidmatch(row.dataset.noteId, state.activenoteid)) {
       row.classList.add('active')
     } else {
       row.classList.remove('active')
@@ -298,7 +298,10 @@ export function initfiles() {
   document.addEventListener('click', closecontextmenu)
 
   // refresh file list when external filesystem changes occur --------------------
-  window.addEventListener('vault-changed', () => {
+  window.addEventListener('vault-changed', (e) => {
+    if (e.detail?.action === 'delete' && e.detail?.note_id) {
+      closetab(e.detail.note_id)
+    }
     loadnotes()
   })
 
@@ -663,6 +666,25 @@ export async function loadnotes() {
     const data = await api('/api/notes')
     state.allnotes = data.notes || []
 
+    // prune tabs for notes that no longer exist on disk --------------------
+    if (Array.isArray(state.opentabs) && state.opentabs.length > 0) {
+      const remainingtabs = state.opentabs.filter(tabid =>
+        state.allnotes.some(n => isnoteidmatch(n.note_id, tabid))
+      )
+      if (remainingtabs.length !== state.opentabs.length) {
+        state.opentabs = remainingtabs
+        if (state.activenoteid && !state.allnotes.some(n => isnoteidmatch(n.note_id, state.activenoteid))) {
+          if (remainingtabs.length > 0) {
+            opennote(remainingtabs[0], { force: true, replacecurrent: false, switchfolder: false })
+          } else {
+            closenote()
+          }
+        }
+        rendertabs()
+        saveworkspacestate()
+      }
+    }
+
     // only auto open on first startup --------------------
     if (!hasinitializednotes) {
       hasinitializednotes = true
@@ -673,19 +695,19 @@ export async function loadnotes() {
 
       const saved = loadworkspacestate()
 
-      if (notetoopen && state.allnotes.some(n => n.note_id === notetoopen)) {
+      if (notetoopen && state.allnotes.some(n => isnoteidmatch(n.note_id, notetoopen))) {
         if (saved && Array.isArray(saved.opentabs)) {
-          state.opentabs = saved.opentabs.filter(t => state.allnotes.some(n => n.note_id === t))
+          state.opentabs = saved.opentabs.filter(t => state.allnotes.some(n => isnoteidmatch(n.note_id, t)))
         }
         await opennote(notetoopen, { newtab: true, switchfolder: true })
         window.history.replaceState({}, '', '/editor.html')
       } else if (saved && saved.opentabs && saved.opentabs.length > 0) {
-        const existingtabs = saved.opentabs.filter(t => state.allnotes.some(n => n.note_id === t))
+        const existingtabs = saved.opentabs.filter(t => state.allnotes.some(n => isnoteidmatch(n.note_id, t)))
         state.opentabs = existingtabs
         if (saved.currentfolder) {
           state.currentfolder = saved.currentfolder
         }
-        const activetoopen = (saved.activenoteid && existingtabs.includes(saved.activenoteid))
+        const activetoopen = (saved.activenoteid && existingtabs.some(t => isnoteidmatch(t, saved.activenoteid)))
           ? saved.activenoteid
           : existingtabs[0]
 
@@ -696,7 +718,7 @@ export async function loadnotes() {
         }
       } else {
         const lastopen = state.currentuser?.preferences?.['last-open-note']
-        const lastopenexists = lastopen && state.allnotes.some(n => n.note_id === lastopen)
+        const lastopenexists = lastopen && state.allnotes.some(n => isnoteidmatch(n.note_id, lastopen))
 
         if (lastopenexists) {
           await opennote(lastopen, { switchfolder: true })

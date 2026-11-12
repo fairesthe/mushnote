@@ -199,7 +199,7 @@
     <main class="editor-pane">
       <!-- floating side tab toggles -------------------- -->
       <button id="tab-toggle-files" class="floating-side-tab tab-left" title="toggle files"></button>
-      <button id="tab-toggle-ai" class="floating-side-tab tab-right" title="toggle ai agent"></button>
+      <button id="tab-toggle-ai" class="floating-side-tab tab-right panel-closed" title="open ai assistant"></button>
 
       <!-- browser style draggable tab bar -------------------- -->
       <div id="editor-tabs-bar" class="editor-tabs-bar hidden">
@@ -211,12 +211,42 @@
       </div>
 
       <div id="editor-container" class="editor-container hidden">
-        <div class="editor-body">
-          <div class="editor-backdrop" id="editor-backdrop" aria-hidden="true"></div>
-          <div class="editor-cursors" id="editor-cursors" aria-hidden="true">
-            <div class="editor-cursors-content" id="editor-cursors-content"></div>
+        <!-- top toolbar -------------------- -->
+        <div id="editor-toolbar" class="editor-toolbar">
+          <div class="toolbar-group">
+            <button type="button" class="toolbar-btn" data-action="h1" title="heading 1">h1</button>
+            <button type="button" class="toolbar-btn" data-action="h2" title="heading 2">h2</button>
+            <button type="button" class="toolbar-btn" data-action="h3" title="heading 3">h3</button>
           </div>
-          <textarea id="note-editor" class="note-textarea" placeholder="start typing..." spellcheck="false"></textarea>
+          <div class="toolbar-divider"></div>
+          <div class="toolbar-group">
+            <button type="button" class="toolbar-btn" data-action="bold" title="bold (ctrl+b)"><b>b</b></button>
+            <button type="button" class="toolbar-btn" data-action="italic" title="italic (ctrl+i)"><i>i</i></button>
+            <button type="button" class="toolbar-btn" data-action="strike" title="strikethrough"><s>s</s></button>
+            <button type="button" class="toolbar-btn" data-action="code" title="inline code"><code>&lt;&gt;</code></button>
+          </div>
+          <div class="toolbar-divider"></div>
+          <div class="toolbar-group">
+            <button type="button" class="toolbar-btn" data-action="bullet-list" title="bullet list">• list</button>
+            <button type="button" class="toolbar-btn" data-action="ordered-list" title="ordered list">1. list</button>
+            <button type="button" class="toolbar-btn" data-action="task-list" title="checklist">☑ task</button>
+          </div>
+          <div class="toolbar-divider"></div>
+          <div class="toolbar-group">
+            <button type="button" class="toolbar-btn" data-action="blockquote" title="quote block">“ quote</button>
+            <button type="button" class="toolbar-btn" data-action="code-block" title="code block">block</button>
+            <button type="button" class="toolbar-btn" data-action="horizontal-rule" title="divider line">—</button>
+          </div>
+          <div class="toolbar-divider"></div>
+          <div class="toolbar-group">
+            <button type="button" class="toolbar-btn" data-action="undo" title="undo (ctrl+z)">↶</button>
+            <button type="button" class="toolbar-btn" data-action="redo" title="redo (ctrl+y)">↷</button>
+          </div>
+        </div>
+
+        <!-- editor body -------------------- -->
+        <div class="editor-body">
+          <div id="tiptap-editor" class="tiptap-editor"></div>
         </div>
       </div>
 
@@ -232,7 +262,7 @@
     <div id="resizer-right" class="column-resizer"></div>
 
     <!-- right column ai assistant drawer -------------------- -->
-    <aside id="ai-drawer" class="ai-drawer">
+    <aside id="ai-drawer" class="ai-drawer is-collapsed">
       <header class="ai-header">
         <div class="ai-title-wrap">
           <img id="ai-drawer-avatar" class="ai-avatar-small" src="/avatars/ai.jpg" alt="ai">
@@ -246,8 +276,21 @@
       </div>
 
       <form id="ai-form" class="ai-input-wrap">
-        <input type="text" id="ai-input" class="ai-input" placeholder="ask assistant anything..." autocomplete="off" required>
-        <button type="submit" id="btn-ai-send" class="btn-send">send</button>
+        <div id="ai-attachments-preview" class="ai-attachments-preview hidden"></div>
+        <div class="ai-input-box">
+          <textarea id="ai-input" class="ai-input" rows="2" placeholder="ask assistant anything..." autocomplete="off"></textarea>
+          <div class="ai-input-bottom-bar">
+            <button type="button" id="btn-ai-attach" class="btn-attach" title="attach file (images, pdf, sound, video)">
+              <svg class="icon-plus-circle" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="16"></line>
+                <line x1="8" y1="12" x2="16" y2="12"></line>
+              </svg>
+            </button>
+            <input type="file" id="ai-file-input" class="hidden" multiple accept="image/*,application/pdf,audio/*,video/*">
+            <button type="submit" id="btn-ai-send" class="btn-send">send</button>
+          </div>
+        </div>
       </form>
     </aside>
   </div>

@@ -30,7 +30,9 @@ export function getdoc(vaultdir, historydir, noteid) {
 
   // broadcast text edits to connected clients with author and ranges --------------------
   ytext.observe((event, transaction) => {
-    const author = transaction.origin || 'user'
+    const origin = transaction.origin
+    const author = (typeof origin === 'object' && origin !== null) ? origin.author : (origin || 'user')
+    const editid = (typeof origin === 'object' && origin !== null) ? origin.edit_id : null
     const clients = clientmap.get(currentnoteid)
     if (!clients || clients.size === 0) {
       return
@@ -60,7 +62,9 @@ export function getdoc(vaultdir, historydir, noteid) {
       type: 'edit_event',
       note_id: currentnoteid,
       author,
-      edits
+      edit_id: editid,
+      edits,
+      content: ytext.toString()
     })
 
     for (const client of clients) {
@@ -420,8 +424,44 @@ function mapnormalizedindices(original, normstart, normlength) {
   return { from, to }
 }
 
+// helper to stream text insertion in natural multi-word chunks into ytext --------------------
+export async function streaminsert(entry, insertpos, text, origin) {
+  if (!text) return
+  const author = (typeof origin === 'object' && origin !== null) ? origin.author : (origin || 'ai')
+  if (author !== 'ai') {
+    entry.doc.transact(() => {
+      entry.ytext.insert(insertpos, text)
+    }, origin)
+    return
+  }
+
+  const rawtokens = text.match(/\S+\s*|\s+/g) || [text]
+  const chunks = []
+  let currentchunk = ''
+  for (const tok of rawtokens) {
+    currentchunk += tok
+    if (tok.includes('\n') || currentchunk.length >= 24 || currentchunk.split(/\s+/).length >= 4) {
+      chunks.push(currentchunk)
+      currentchunk = ''
+    }
+  }
+  if (currentchunk) chunks.push(currentchunk)
+
+  const delay = 85
+  let pos = insertpos
+  for (const chunk of chunks) {
+    entry.doc.transact(() => {
+      entry.ytext.insert(pos, chunk)
+    }, origin)
+    pos += chunk.length
+    if (chunks.length > 1) {
+      await new Promise(r => setTimeout(r, delay))
+    }
+  }
+}
+
 // apply diff directly into yjs text document with resilient matching and multiple modes --------------------
-export function applydiff(vaultdir, historydir, noteid, options) {
+export async function applydiff(vaultdir, historydir, noteid, options) {
   const { author = 'ai' } = options
   const entry = getdoc(vaultdir, historydir, noteid)
 
@@ -437,81 +477,92 @@ export function applydiff(vaultdir, historydir, noteid, options) {
     return entry.ytext.toString()
   }
 
-  entry.doc.transact(() => {
-    for (const edit of editlist) {
-      const mode = edit.mode || 'replace'
-      const target = unliteralescapes(edit.target_text || '')
-      const replacement = unliteralescapes(edit.replacement_text !== undefined ? edit.replacement_text : '')
-      const current = entry.ytext.toString()
+  for (let editidx = 0; editidx < editlist.length; editidx++) {
+    const edit = editlist[editidx]
+    const editid = `${author}_edit_${Date.now()}_${editidx}`
+    const origin = { author, edit_id: editid }
+    const mode = edit.mode || 'replace'
+    const target = unliteralescapes(edit.target_text || '')
+    const replacement = unliteralescapes(edit.replacement_text !== undefined ? edit.replacement_text : '')
+    const current = entry.ytext.toString()
 
-      if (mode === 'replace') {
-        const bounds = findtargetbounds(current, target)
-        if (!bounds) {
-          throw new Error(`target text not found in note: "${target.slice(0, 40)}"`)
-        }
-        entry.ytext.delete(bounds.from, bounds.to - bounds.from)
-        if (replacement) {
-          entry.ytext.insert(bounds.from, replacement)
-        }
-      } else if (mode === 'delete') {
-        const bounds = findtargetbounds(current, target)
-        if (!bounds) {
-          throw new Error(`target text not found in note: "${target.slice(0, 40)}"`)
-        }
-        // if deleting a full line clean up its newline --------------------
-        let deletefrom = bounds.from
-        let deletelen = bounds.to - bounds.from
-        if (current[bounds.to] === '\n') {
-          deletelen += 1
-        } else if (deletefrom > 0 && current[deletefrom - 1] === '\n') {
-          deletefrom -= 1
-          deletelen += 1
-        }
+    if (mode === 'replace') {
+      const bounds = findtargetbounds(current, target)
+      if (!bounds) {
+        throw new Error(`target text not found in note: "${target.slice(0, 40)}"`)
+      }
+      if (bounds.to > bounds.from) {
+        entry.doc.transact(() => {
+          entry.ytext.delete(bounds.from, bounds.to - bounds.from)
+        }, origin)
+      }
+      if (replacement) {
+        await streaminsert(entry, bounds.from, replacement, origin)
+      }
+    } else if (mode === 'delete') {
+      const bounds = findtargetbounds(current, target)
+      if (!bounds) {
+        throw new Error(`target text not found in note: "${target.slice(0, 40)}"`)
+      }
+      // if deleting a full line clean up its newline --------------------
+      let deletefrom = bounds.from
+      let deletelen = bounds.to - bounds.from
+      if (current[bounds.to] === '\n') {
+        deletelen += 1
+      } else if (deletefrom > 0 && current[deletefrom - 1] === '\n') {
+        deletefrom -= 1
+        deletelen += 1
+      }
+      entry.doc.transact(() => {
         entry.ytext.delete(deletefrom, deletelen)
-      } else if (mode === 'insert_after') {
-        const bounds = findtargetbounds(current, target)
-        if (!bounds) {
-          throw new Error(`target text not found in note: "${target.slice(0, 40)}"`)
-        }
-        let insertpos = bounds.to
-        let texttoinsert = replacement
-        if (current[bounds.to] === '\n') {
-          insertpos = bounds.to + 1
-          if (!texttoinsert.endsWith('\n')) {
-            texttoinsert = `${texttoinsert}\n`
-          }
-        } else if (!texttoinsert.startsWith('\n') && !texttoinsert.startsWith(' ')) {
-          texttoinsert = `\n${texttoinsert}`
-        }
-        entry.ytext.insert(insertpos, texttoinsert)
-      } else if (mode === 'insert_before') {
-        const bounds = findtargetbounds(current, target)
-        if (!bounds) {
-          throw new Error(`target text not found in note: "${target.slice(0, 40)}"`)
-        }
-        let texttoinsert = replacement
-        if (bounds.from > 0 && current[bounds.from - 1] === '\n' && !texttoinsert.endsWith('\n')) {
+      }, origin)
+    } else if (mode === 'insert_after') {
+      const bounds = findtargetbounds(current, target)
+      if (!bounds) {
+        throw new Error(`target text not found in note: "${target.slice(0, 40)}"`)
+      }
+      let insertpos = bounds.to
+      let texttoinsert = replacement
+      if (current[bounds.to] === '\n') {
+        insertpos = bounds.to + 1
+        if (!texttoinsert.endsWith('\n')) {
           texttoinsert = `${texttoinsert}\n`
         }
-        entry.ytext.insert(bounds.from, texttoinsert)
-      } else if (mode === 'append') {
-        const text = replacement || ''
-        let separator = ''
-        if (current.length > 0) {
-          if (current.endsWith('\n\n')) {
-            separator = ''
-          } else if (current.endsWith('\n')) {
-            separator = text.startsWith('\n') ? '' : '\n'
-          } else {
-            separator = text.startsWith('\n\n') ? '' : (text.startsWith('\n') ? '\n' : '\n\n')
-          }
-        }
-        entry.ytext.insert(entry.ytext.length, `${separator}${text}`)
-      } else {
-        throw new Error(`invalid edit mode "${mode}"`)
+      } else if (!texttoinsert.startsWith('\n') && !texttoinsert.startsWith(' ')) {
+        texttoinsert = `\n${texttoinsert}`
       }
+      await streaminsert(entry, insertpos, texttoinsert, origin)
+    } else if (mode === 'insert_before') {
+      const bounds = findtargetbounds(current, target)
+      if (!bounds) {
+        throw new Error(`target text not found in note: "${target.slice(0, 40)}"`)
+      }
+      let texttoinsert = replacement
+      if (bounds.from > 0 && current[bounds.from - 1] === '\n' && !texttoinsert.endsWith('\n')) {
+        texttoinsert = `${texttoinsert}\n`
+      }
+      await streaminsert(entry, bounds.from, texttoinsert, origin)
+    } else if (mode === 'append') {
+      const text = replacement || ''
+      let separator = ''
+      if (current.length > 0) {
+        if (current.endsWith('\n\n')) {
+          separator = ''
+        } else if (current.endsWith('\n')) {
+          separator = text.startsWith('\n') ? '' : '\n'
+        } else {
+          separator = text.startsWith('\n\n') ? '' : (text.startsWith('\n') ? '\n' : '\n\n')
+        }
+      }
+      await streaminsert(entry, entry.ytext.length, `${separator}${text}`, origin)
+    } else {
+      throw new Error(`invalid edit mode "${mode}"`)
     }
-  }, author)
+
+    if (editidx < editlist.length - 1 && author === 'ai') {
+      await new Promise(r => setTimeout(r, 120))
+    }
+  }
 
   return entry.ytext.toString()
 }
