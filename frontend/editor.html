@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mushnote</title>
+  <link rel="icon" type="image/png" href="/logo.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- workspace view two column layout -------------------- -->
+  <div id="workspace-view" class="workspace-layout">
+    <!-- left column directory tree and user -------------------- -->
+    <aside id="sidebar-pane" class="sidebar">
+      <!-- files tree view -------------------- -->
+      <div id="sidebar-files-view" class="sidebar-files-view">
+        <div class="sidebar-header">
+          <div class="sidebar-brand">
+            <img class="sidebar-logo" src="/logo.png" alt="mushnote" title="mushnote">
+          </div>
+          <div class="sidebar-user" id="sidebar-user-box" style="cursor: pointer;" title="user settings">
+            <img id="logged-avatar" class="sidebar-avatar" src="" alt="avatar">
+            <span id="logged-name" class="sidebar-user-name"></span>
+          </div>
+        </div>
+
+        <nav class="folder-nav" id="folder-nav-pane">
+          <div id="folder-breadcrumb" class="folder-breadcrumb"></div>
+          <div id="folder-items" class="folder-items"></div>
+        </nav>
+      </div>
+
+      <!-- user settings view -------------------- -->
+      <div id="sidebar-settings-view" class="sidebar-settings-view hidden">
+        <!-- top bar starting with back and log out -------------------- -->
+        <div class="settings-top-bar">
+          <div class="settings-top-left">
+            <img class="sidebar-logo" src="/logo.png" alt="mushnote" title="mushnote">
+            <button type="button" id="btn-settings-back" class="btn-settings-back" title="back to notes">&larr; notes</button>
+          </div>
+          <button type="button" id="btn-settings-logout" class="btn-settings-logout">log out</button>
+        </div>
+
+        <div class="settings-scroll-content">
+          <!-- user selection section (admin only) -------------------- -->
+          <section id="user-selection-section" class="settings-block hidden">
+            <h2 class="settings-block-title">users</h2>
+            <div id="user-radio-list" class="user-radio-list">
+              <!-- radio buttons rendered dynamically -------------------- -->
+            </div>
+
+            <button type="button" id="btn-toggle-add-user" class="btn-add-account-toggle">+ add account</button>
+
+            <!-- inline add account form -------------------- -->
+            <form id="form-inline-add-user" class="inline-add-user-form hidden">
+              <div class="settings-field">
+                <input type="text" id="inline-new-username" class="settings-input" placeholder="new username" autocomplete="off" required>
+              </div>
+              <label class="settings-checkbox-wrap">
+                <input type="checkbox" id="inline-new-is-admin">
+                <span>grant admin</span>
+              </label>
+              <label class="settings-checkbox-wrap">
+                <input type="checkbox" id="inline-new-is-bot">
+                <span>bot account</span>
+              </label>
+              <div class="add-user-btn-row">
+                <button type="submit" class="btn-primary-settings">create</button>
+                <button type="button" id="btn-cancel-add-user" class="btn-secondary-settings">cancel</button>
+              </div>
+              <div id="inline-add-user-msg" class="settings-msg hidden"></div>
+            </form>
+          </section>
+
+          <!-- user settings section -------------------- -->
+          <section class="settings-block">
+            <h2 id="settings-heading" class="settings-block-title">user settings</h2>
+
+            <form id="form-user-settings" class="settings-form">
+              <div class="settings-field">
+                <label for="setting-display-name">display name</label>
+                <input type="text" id="setting-display-name" class="settings-input" required autocomplete="off">
+              </div>
+
+              <div class="settings-field">
+                <label for="setting-avatar-url">avatar url</label>
+                <input type="text" id="setting-avatar-url" class="settings-input" placeholder="/avatars/wyatt.png" autocomplete="off">
+              </div>
+
+              <button type="button" id="btn-jump-personality-sidebar" class="btn-personality-jump">
+                jump to personality note &rarr;
+              </button>
+
+              <div class="settings-section-subtitle">theme colors</div>
+              <div class="settings-colors-grid">
+                <div class="settings-color-row">
+                  <label for="setting-color-user">user</label>
+                  <div class="color-picker-group">
+                    <input type="color" id="setting-color-user" value="#3b82f6">
+                    <input type="text" id="setting-color-user-hex" class="color-hex-input" value="#3b82f6" maxlength="7">
+                  </div>
+                </div>
+
+                <div class="settings-color-row">
+                  <label for="setting-color-bg">background</label>
+                  <div class="color-picker-group">
+                    <input type="color" id="setting-color-bg" value="#000000">
+                    <input type="text" id="setting-color-bg-hex" class="color-hex-input" value="#000000" maxlength="7">
+                  </div>
+                </div>
+
+                <div class="settings-color-row">
+                  <label for="setting-color-text">text</label>
+                  <div class="color-picker-group">
+                    <input type="color" id="setting-color-text" value="#ededed">
+                    <input type="text" id="setting-color-text-hex" class="color-hex-input" value="#ededed" maxlength="7">
+                  </div>
+                </div>
+
+                <div class="settings-color-row">
+                  <label for="setting-color-accent">accent</label>
+                  <div class="color-picker-group">
+                    <input type="color" id="setting-color-accent" value="#ffffff">
+                    <input type="text" id="setting-color-accent-hex" class="color-hex-input" value="#ffffff" maxlength="7">
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-section-subtitle">change password</div>
+              <div id="pwd-current-wrap" class="settings-field">
+                <input type="password" id="setting-current-pwd" class="settings-input" placeholder="current password" autocomplete="current-password">
+              </div>
+              <div class="settings-field">
+                <input type="password" id="setting-new-pwd" class="settings-input" placeholder="new password" autocomplete="new-password">
+              </div>
+
+              <div id="setting-admin-role-wrap" class="settings-field hidden">
+                <label class="settings-checkbox-wrap">
+                  <input type="checkbox" id="setting-user-is-admin">
+                  <span>grant admin</span>
+                </label>
+              </div>
+
+              <div id="setting-bot-role-wrap" class="settings-field hidden">
+                <label class="settings-checkbox-wrap">
+                  <input type="checkbox" id="setting-user-is-bot">
+                  <span>bot account</span>
+                </label>
+              </div>
+
+              <button type="submit" id="btn-save-settings" class="btn-primary-settings">save settings</button>
+              <div id="user-settings-msg" class="settings-msg hidden"></div>
+            </form>
+
+            <!-- delete account section with triple check -------------------- -->
+            <div id="delete-account-wrap" class="delete-account-wrap hidden">
+              <div class="settings-section-subtitle" style="color: #ef4444; margin-top: 14px;">delete account</div>
+              <button type="button" id="btn-delete-step-0" class="btn-danger-settings">delete account</button>
+
+              <!-- triple check steps -------------------- -->
+              <div id="delete-check-1" class="delete-step-box hidden">
+                <div class="delete-step-text">check 1 of 3: are you sure you want to delete <span id="delete-name-preview-1" class="bold-text"></span>? all account data will be removed.</div>
+                <div class="delete-step-actions">
+                  <button type="button" id="btn-delete-confirm-1" class="btn-danger-settings">confirm (1/3)</button>
+                  <button type="button" id="btn-delete-cancel-1" class="btn-secondary-settings">cancel</button>
+                </div>
+              </div>
+
+              <div id="delete-check-2" class="delete-step-box hidden">
+                <div class="delete-step-text">check 2 of 3: warning! this action cannot be undone. proceed?</div>
+                <div class="delete-step-actions">
+                  <button type="button" id="btn-delete-confirm-2" class="btn-danger-settings">confirm (2/3)</button>
+                  <button type="button" id="btn-delete-cancel-2" class="btn-secondary-settings">cancel</button>
+                </div>
+              </div>
+
+              <div id="delete-check-3" class="delete-step-box hidden">
+                <div class="delete-step-text">check 3 of 3: type <span id="delete-name-preview-3" class="bold-text"></span> below to permanently delete:</div>
+                <div class="settings-field">
+                  <input type="text" id="delete-confirm-input" class="settings-input" placeholder="type username here" autocomplete="off">
+                </div>
+                <div class="delete-step-actions">
+                  <button type="button" id="btn-delete-final" class="btn-danger-settings" disabled>permanently delete</button>
+                  <button type="button" id="btn-delete-cancel-3" class="btn-secondary-settings">cancel</button>
+                </div>
+              </div>
+
+              <div id="admin-delete-msg" class="settings-msg hidden"></div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </aside>
+
+    <!-- left resize resizer handle -------------------- -->
+    <div id="resizer-left" class="column-resizer"></div>
+
+    <!-- center editor note open view -------------------- -->
+    <main class="editor-pane">
+      <!-- floating side tab toggles -------------------- -->
+      <button id="tab-toggle-files" class="floating-side-tab tab-left" title="toggle files"></button>
+      <button id="tab-toggle-ai" class="floating-side-tab tab-right" title="toggle ai agent"></button>
+
+      <!-- browser style draggable tab bar -------------------- -->
+      <div id="editor-tabs-bar" class="editor-tabs-bar hidden">
+        <div id="tabs-track" class="tabs-track"></div>
+      </div>
+
+      <div id="empty-state" class="empty-state">
+        <!-- completely blank screen when no note is open -------------------- -->
+      </div>
+
+      <div id="editor-container" class="editor-container hidden">
+        <div class="editor-body">
+          <div class="editor-backdrop" id="editor-backdrop" aria-hidden="true"></div>
+          <div class="editor-cursors" id="editor-cursors" aria-hidden="true">
+            <div class="editor-cursors-content" id="editor-cursors-content"></div>
+          </div>
+          <textarea id="note-editor" class="note-textarea" placeholder="start typing..." spellcheck="false"></textarea>
+        </div>
+      </div>
+
+      <div id="image-viewer-container" class="image-viewer-container hidden">
+        <div class="image-viewer-wrap">
+          <img id="image-viewer-img" class="image-viewer-img" src="" alt="preview">
+          <div id="image-viewer-meta" class="image-viewer-meta"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- right resize resizer handle -------------------- -->
+    <div id="resizer-right" class="column-resizer"></div>
+
+    <!-- right column ai assistant drawer -------------------- -->
+    <aside id="ai-drawer" class="ai-drawer">
+      <header class="ai-header">
+        <div class="ai-title-wrap">
+          <img id="ai-drawer-avatar" class="ai-avatar-small" src="/avatars/ai.jpg" alt="ai">
+          <h3 id="ai-header-name" class="ai-name">assistant</h3>
+        </div>
+        <button id="btn-close-ai" class="icon-btn" title="close">×</button>
+      </header>
+
+      <div id="ai-messages" class="ai-messages">
+        <!-- messages populated dynamically -------------------- -->
+      </div>
+
+      <form id="ai-form" class="ai-input-wrap">
+        <input type="text" id="ai-input" class="ai-input" placeholder="ask assistant anything..." autocomplete="off" required>
+        <button type="submit" id="btn-ai-send" class="btn-send">send</button>
+      </form>
+    </aside>
+  </div>
+
+  <!-- new note modal -------------------- -->
+  <div id="new-note-dialog" class="dialog-overlay hidden">
+    <div class="dialog-box">
+      <h3 class="dialog-title">create new note</h3>
+      <p class="dialog-sub">enter note path (e.g. groceries or work/ideas)</p>
+
+      <form id="new-note-form" class="auth-form">
+        <div class="input-group">
+          <input type="text" id="new-note-input" placeholder="filename or folder/filename" required autofocus>
+        </div>
+        <div id="new-note-error" class="error-text hidden"></div>
+        <div class="dialog-actions">
+          <button type="button" id="btn-cancel-new-note" class="btn secondary">cancel</button>
+          <button type="submit" class="btn primary">create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- custom right click context menu -------------------- -->
+  <div id="file-context-menu" class="context-menu hidden">
+    <div id="ctx-item-open-tab" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/new.png" alt="tab"> open in new tab</div>
+    <div id="ctx-item-new" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/new.png" alt="new"> new note...</div>
+    <div id="ctx-item-new-folder" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/newfolder.png" alt="newfolder"> new folder...</div>
+    <div id="ctx-item-cut" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="cut"> cut</div>
+    <div id="ctx-item-copy" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="copy"> copy</div>
+    <div id="ctx-item-paste" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="paste"> paste</div>
+    <div id="ctx-item-rename" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/code.png" alt="rename"> rename...</div>
+    <div id="ctx-item-delete" class="context-item text-danger"><img class="btn-icon-img" src="/resources/icons/files/delete.png" alt="delete"> delete...</div>
+    <div id="ctx-item-delete-folder" class="context-item text-danger"><img class="btn-icon-img" src="/resources/icons/files/delete.png" alt="delete"> delete folder...</div>
+    <div id="ctx-item-system" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/folder.png" alt="system"> system...</div>
+  </div>
+
+  <!-- custom right click context menu for assistant -------------------- -->
+  <div id="ai-context-menu" class="context-menu hidden">
+    <div id="ctx-item-detailed-view" class="context-item context-item-checkbox">
+      <input type="checkbox" id="chk-detailed-view" class="menu-checkbox" tabindex="-1">
+      <span>detailed view</span>
+    </div>
+    <div id="ctx-item-copy-chat" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/text.png" alt="copy"> copy conversation</div>
+  </div>
+
+  <script src="js/main.js" type="module"></script>
+</body>
+</html>
+

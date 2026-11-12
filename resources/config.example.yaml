@@ -1,0 +1,33 @@
+# server configuration --------------------
+server:
+  port: 3000
+  host: localhost
+
+# vault folder configuration --------------------
+vault:
+  path: notes
+
+# history folder configuration --------------------
+history:
+  path: history
+
+# gemini api config --------------------
+gemini:
+  api_key: "key-here"
+  ai-username: ai
+
+# location and weather config --------------------
+location:
+  city: "Detroit, MI"
+  units: "imperial" # imperial or metric
+
+# users configuration --------------------
+users:
+  - username: admin
+    admin: true
+    bot: false
+    avatar: /avatars/default_admin.png
+  - username: ai
+    admin: false
+    bot: true
+    avatar: /avatars/default_ai.png

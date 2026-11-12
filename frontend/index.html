@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mushnote - login</title>
+  <link rel="icon" type="image/png" href="/logo.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- auth container -------------------- -->
+  <div id="auth-container" class="auth-container">
+    <header class="app-header">
+      <div class="logo-title-wrap">
+        <img class="app-logo" src="/logo.png" alt="mushnote logo">
+        <h1 class="logo">mushnote</h1>
+      </div>
+      <p class="tagline">minimal notes</p>
+    </header>
+
+    <main id="auth-view" class="view">
+      <div class="user-picker">
+        <h2 class="view-title">choose user</h2>
+        <div id="users-list" class="users-grid">
+          <!-- dynamically populated -------------------- -->
+        </div>
+      </div>
+
+      <!-- password dialog -------------------- -->
+      <div id="password-dialog" class="dialog-overlay hidden">
+        <div class="dialog-box">
+          <div class="dialog-user-header">
+            <img id="dialog-avatar" class="dialog-avatar" src="" alt="avatar">
+            <div>
+              <h3 id="dialog-user-name" class="dialog-title"></h3>
+              <p id="dialog-subtext" class="dialog-sub"></p>
+            </div>
+          </div>
+
+          <form id="password-form" class="auth-form">
+            <div class="input-group">
+              <label id="pwd-label" for="pwd-input">password</label>
+              <input type="password" id="pwd-input" autocomplete="current-password" required autofocus>
+            </div>
+
+            <div id="confirm-group" class="input-group hidden">
+              <label for="pwd-confirm-input">confirm password</label>
+              <input type="password" id="pwd-confirm-input" autocomplete="new-password">
+            </div>
+
+            <div id="error-message" class="error-text hidden"></div>
+
+            <div class="dialog-actions">
+              <button type="button" id="btn-cancel" class="btn secondary">cancel</button>
+              <button type="submit" id="btn-submit" class="btn primary">continue</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/login.js" type="module"></script>
+</body>
+</html>

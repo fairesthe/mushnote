@@ -1,0 +1,773 @@
+import http from 'node:http'
+import path from 'node:path'
+import fs from 'node:fs'
+import express from 'express'
+import { WebSocketServer } from 'ws'
+import { loadconfig, saveconfig, getvaultpath, gethistorypath, getrootdir } from './config.js'
+import { initvault, getnotepath, listnotes, readnote, deletenote, movenoteorfolder, createfolder, deletefolder, copynoteorfolder, initsystemnotes, readuserpreferences, updateuserpreferences } from './vault.js'
+import { inithistory, gethistory, getevents } from './history.js'
+import { getdoc, getdocifloaded, applydiff, handlesocket, migratedocentry } from './sync.js'
+import { verifypassword, setuserauth, createsession, getsession, extracttoken, formatavatarurl } from './auth.js'
+import { runagentchat } from './agent.js'
+import { initvaultwatcher } from './watcher.js'
+
+// configuration and initialization --------------------
+const config = loadconfig()
+const vaultdir = getvaultpath(config)
+const historydir = gethistorypath(config)
+const rootdir = getrootdir()
+
+initvault(vaultdir)
+inithistory(historydir)
+initsystemnotes(vaultdir, config.users || [])
+
+const app = express()
+const server = http.createServer(app)
+const port = config.server?.port || 3000
+const host = config.server?.host || 'localhost'
+
+app.use(express.json())
+
+// serve static frontend and resources --------------------
+const frontenddir = path.join(rootdir, 'frontend')
+const resourcesdir = path.join(rootdir, 'resources')
+const iconsdir = path.join(resourcesdir, 'icons')
+const notesavatarsdir = path.join(vaultdir, 'avatars')
+const resourcesavatarsdir = path.join(resourcesdir, 'avatars')
+
+// serve avatars directly from notes/avatars and resources without /resources prefix --------------------
+if (fs.existsSync(notesavatarsdir)) {
+  app.use('/avatars', express.static(notesavatarsdir))
+  app.use('/notes/avatars', express.static(notesavatarsdir))
+}
+if (fs.existsSync(resourcesavatarsdir)) {
+  app.use('/avatars', express.static(resourcesavatarsdir))
+}
+app.use('/avatars', express.static(resourcesdir))
+
+app.use('/icons', express.static(iconsdir))
+app.use('/resources', express.static(resourcesdir))
+app.use('/logo.png', (req, res) => res.sendFile(path.join(resourcesdir, 'logo.png')))
+app.use('/favicon.ico', (req, res) => res.sendFile(path.join(resourcesdir, 'logo.png')))
+app.use(express.static(frontenddir))
+
+// friendly html page routes --------------------
+app.get('/login', (req, res) => {
+  res.redirect('/')
+})
+
+app.get('/editor', (req, res) => {
+  res.sendFile(path.join(frontenddir, 'editor.html'))
+})
+
+// health check endpoint --------------------
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    vault: vaultdir,
+    history: historydir
+  })
+})
+
+// check whether user has access to view or edit system notes --------------------
+function checksystemaccess(noteid, session) {
+  if (!noteid || !noteid.startsWith('system/')) {
+    return true
+  }
+  if (session?.admin) {
+    return true
+  }
+  const parts = noteid.split('/')
+  const folderuser = parts[1]
+  return Boolean(session?.user_id && folderuser === session.user_id)
+}
+
+// auth routes --------------------
+app.get('/api/auth/users', (req, res) => {
+  const conf = loadconfig()
+  const users = (conf.users || []).map(u => {
+    const userid = u.username || u.id
+    const isbot = Boolean(u.bot || u.role === 'ai')
+    const isadmin = Boolean(u.admin)
+    const prefs = readuserpreferences(vaultdir, userid) || {}
+    const displayname = prefs.name || (userid.charAt(0).toUpperCase() + userid.slice(1))
+    return {
+      id: userid,
+      username: userid,
+      name: displayname,
+      avatar: formatavatarurl(u.avatar),
+      admin: isadmin,
+      bot: isbot,
+      has_auth: Boolean(u.auth),
+      can_login: !isbot,
+      preferences: {
+        'user-color': prefs['user-color'] || (isbot ? '#10b981' : '#3b82f6'),
+        'bg-color': prefs['bg-color'] || '#000000',
+        'text-color': prefs['text-color'] || '#ededed',
+        'accent-color': prefs['accent-color'] || '#ffffff',
+        'last-open-note': prefs['last-open-note'] || null
+      }
+    }
+  })
+  res.json({ users })
+})
+
+app.post('/api/auth/setup-password', (req, res) => {
+  const { user_id, password } = req.body
+  if (!user_id || !password) {
+    return res.status(400).json({ error: 'user_id and password are required' })
+  }
+
+  const conf = loadconfig()
+  const user = (conf.users || []).find(u => (u.username || u.id) === user_id)
+  if (!user) {
+    return res.status(404).json({ error: 'user not found' })
+  }
+  const isbot = Boolean(user.bot || user.role === 'ai')
+  if (isbot) {
+    return res.status(403).json({ error: 'bot accounts cannot be logged into' })
+  }
+  if (user.auth) {
+    return res.status(400).json({ error: 'user already has auth set' })
+  }
+
+  try {
+    const updated = setuserauth(user_id, password)
+    const userid = updated.username || updated.id
+    const prefs = readuserpreferences(vaultdir, userid) || {}
+    const displayname = prefs.name || (userid.charAt(0).toUpperCase() + userid.slice(1))
+    const userpayload = {
+      id: userid,
+      username: userid,
+      name: displayname,
+      avatar: formatavatarurl(updated.avatar),
+      admin: Boolean(updated.admin),
+      bot: false,
+      preferences: prefs
+    }
+    const token = createsession(userpayload)
+    res.setHeader('Set-Cookie', `mushnote_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 60 * 60}`)
+    res.json({
+      status: 'ok',
+      token,
+      user: userpayload
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/auth/login', (req, res) => {
+  const { user_id, password } = req.body
+  if (!user_id || !password) {
+    return res.status(400).json({ error: 'user_id and password are required' })
+  }
+
+  const conf = loadconfig()
+  const user = (conf.users || []).find(u => (u.username || u.id) === user_id)
+  if (!user) {
+    return res.status(404).json({ error: 'user not found' })
+  }
+  const isbot = Boolean(user.bot || user.role === 'ai')
+  if (isbot) {
+    return res.status(403).json({ error: 'bot accounts cannot be logged into' })
+  }
+  if (!user.auth) {
+    return res.status(400).json({ error: 'auth not configured for this user' })
+  }
+
+  const valid = verifypassword(password, user.auth)
+  if (!valid) {
+    return res.status(401).json({ error: 'invalid credentials' })
+  }
+
+  const userid = user.username || user.id
+  const prefs = readuserpreferences(vaultdir, userid) || {}
+  const displayname = prefs.name || (userid.charAt(0).toUpperCase() + userid.slice(1))
+  const userpayload = {
+    id: userid,
+    username: userid,
+    name: displayname,
+    avatar: formatavatarurl(user.avatar),
+    admin: Boolean(user.admin),
+    bot: false,
+    preferences: prefs
+  }
+  const token = createsession(userpayload)
+  res.setHeader('Set-Cookie', `mushnote_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 60 * 60}`)
+  res.json({
+    status: 'ok',
+    token,
+    user: userpayload
+  })
+})
+
+app.get('/api/auth/me', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!session) {
+    return res.status(401).json({ authenticated: false, user: null })
+  }
+  res.json({ authenticated: true, user: session })
+})
+
+app.post('/api/auth/logout', (req, res) => {
+  res.setHeader('Set-Cookie', [
+    'mushnote_session=; Path=/; HttpOnly; Max-Age=0',
+    'gillium_session=; Path=/; HttpOnly; Max-Age=0'
+  ])
+  res.json({ status: 'ok' })
+})
+
+// admin create user account --------------------
+app.post('/api/admin/users', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!session || !session.admin) {
+    return res.status(403).json({ error: 'admin privileges required' })
+  }
+
+  const { username, admin = false, bot = false, avatar } = req.body
+  const cleanusername = String(username || '').toLowerCase().trim().replace(/[^a-z0-9_-]/g, '')
+  if (!cleanusername) {
+    return res.status(400).json({ error: 'valid username is required' })
+  }
+
+  const conf = loadconfig()
+  const exists = (conf.users || []).some(u => (u.username || u.id) === cleanusername)
+  if (exists) {
+    return res.status(400).json({ error: 'username already exists' })
+  }
+
+  const isbot = Boolean(bot)
+  const newuser = {
+    username: cleanusername,
+    admin: Boolean(admin),
+    bot: isbot,
+    avatar: formatavatarurl(avatar) || (isbot ? '/avatars/ai.jpg' : '/avatars/wyatt.png')
+  }
+
+  if (!conf.users) {
+    conf.users = []
+  }
+  conf.users.push(newuser)
+  saveconfig(conf)
+  initsystemnotes(vaultdir, [newuser])
+
+  res.status(201).json({ status: 'created', user: newuser })
+})
+
+// admin delete user account --------------------
+app.delete('/api/admin/users/:username', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!session || !session.admin) {
+    return res.status(403).json({ error: 'admin privileges required' })
+  }
+
+  const targetname = String(req.params.username || '').toLowerCase().trim()
+  if (targetname === session.user_id) {
+    return res.status(400).json({ error: 'cannot delete your own account' })
+  }
+
+  const conf = loadconfig()
+  const aiusername = conf.gemini?.['ai-username'] || conf.gemini?.ai_username || 'ai'
+  if (targetname === aiusername) {
+    return res.status(400).json({ error: 'cannot delete the ai assistant account' })
+  }
+
+  const targetuser = (conf.users || []).find(u => (u.username || u.id) === targetname)
+  if (!targetuser) {
+    return res.status(404).json({ error: 'user not found' })
+  }
+
+  conf.users = conf.users.filter(u => (u.username || u.id) !== targetname)
+  saveconfig(conf)
+
+  // clean up system user folder if it exists --------------------
+  const usersystemdir = path.join(vaultdir, 'system', targetname)
+  if (fs.existsSync(usersystemdir)) {
+    try {
+      fs.rmSync(usersystemdir, { recursive: true, force: true })
+    } catch (err) {
+      console.error('failed to remove user system dir', err)
+    }
+  }
+
+  res.json({ status: 'ok', deleted: targetname })
+})
+
+// update user password --------------------
+app.post('/api/user/password', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!session) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+
+  const { current_password, new_password, target_user } = req.body
+  if (!new_password || typeof new_password !== 'string' || new_password.length < 1) {
+    return res.status(400).json({ error: 'valid new password is required' })
+  }
+
+  const targetuserid = (target_user && session.admin ? target_user : session.user_id).toLowerCase().trim()
+  const conf = loadconfig()
+  const user = (conf.users || []).find(u => (u.username || u.id) === targetuserid)
+  if (!user) {
+    return res.status(404).json({ error: 'user not found' })
+  }
+  if (user.bot) {
+    return res.status(400).json({ error: 'cannot set password for bot accounts' })
+  }
+
+  // verify current password if user has auth and is changing own password --------------------
+  if (targetuserid === session.user_id && user.auth) {
+    if (!current_password || !verifypassword(current_password, user.auth)) {
+      return res.status(400).json({ error: 'current password is incorrect' })
+    }
+  }
+
+  setuserauth(targetuserid, new_password)
+  res.json({ status: 'ok' })
+})
+
+// get user preferences and config --------------------
+app.get('/api/user/preferences', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!session) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+
+  const targetuserid = (req.query.user_id || session.user_id).toLowerCase().trim()
+  if (targetuserid !== session.user_id && !session.admin) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
+  const conf = loadconfig()
+  const user = (conf.users || []).find(u => (u.username || u.id) === targetuserid)
+  if (!user) {
+    return res.status(404).json({ error: 'user not found' })
+  }
+
+  const prefs = readuserpreferences(vaultdir, targetuserid) || {}
+  res.json({
+    user_id: targetuserid,
+    username: targetuserid,
+    avatar: formatavatarurl(user.avatar) || '',
+    admin: Boolean(user.admin),
+    bot: Boolean(user.bot || user.role === 'ai'),
+    preferences: prefs
+  })
+})
+
+// update user preferences and config fields --------------------
+app.post('/api/user/preferences', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!session) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+
+  const { user_id, preferences = {}, avatar, admin, bot } = req.body
+  const targetuserid = (user_id || session.user_id).toLowerCase().trim()
+  if (targetuserid !== session.user_id && !session.admin) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
+  const conf = loadconfig()
+  const user = (conf.users || []).find(u => (u.username || u.id) === targetuserid)
+  if (!user) {
+    return res.status(404).json({ error: 'user not found' })
+  }
+
+  const updated = updateuserpreferences(vaultdir, targetuserid, preferences)
+
+  let configchanged = false
+  if (typeof avatar === 'string') {
+    const cleanavatar = formatavatarurl(avatar)
+    if (cleanavatar !== user.avatar) {
+      user.avatar = cleanavatar
+      configchanged = true
+    }
+  }
+  if (session.admin && typeof admin === 'boolean' && admin !== user.admin && !user.bot) {
+    user.admin = admin
+    configchanged = true
+  }
+  if (session.admin && typeof bot === 'boolean' && bot !== user.bot && targetuserid !== session.user_id) {
+    user.bot = bot
+    configchanged = true
+  }
+  if (configchanged) {
+    saveconfig(conf)
+  }
+
+  res.json({ status: 'ok', preferences: updated, user })
+})
+
+// list all notes in vault respecting user permissions --------------------
+app.get('/api/notes', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  const isadmin = Boolean(session?.admin)
+  const currentuser = session?.user_id
+
+  let notes = listnotes(vaultdir)
+  if (!isadmin) {
+    notes = notes.filter(n => {
+      if (!n.note_id.startsWith('system/')) {
+        return true
+      }
+      const parts = n.note_id.split('/')
+      const folderuser = parts[1]
+      return Boolean(currentuser && folderuser === currentuser)
+    })
+  }
+
+  res.json({ notes })
+})
+
+// read single note supporting nested paths --------------------
+app.get('/api/note', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  const noteid = req.query.id
+  if (!noteid) {
+    return res.status(400).json({ error: 'id query parameter required' })
+  }
+  if (!checksystemaccess(noteid, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const note = readnote(vaultdir, noteid)
+  if (!note) {
+    return res.status(404).json({ error: 'note not found' })
+  }
+  const loadeddoc = getdocifloaded(noteid)
+  if (loadeddoc) {
+    note.content = loadeddoc.getcontent()
+  }
+  res.json({ note })
+})
+
+// serve raw vault file (e.g. images) --------------------
+app.get('/api/raw', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  const noteid = req.query.id
+  if (!noteid) {
+    return res.status(400).json({ error: 'id query parameter required' })
+  }
+  if (!checksystemaccess(noteid, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const filepath = getnotepath(vaultdir, noteid)
+  if (!fs.existsSync(filepath)) {
+    return res.status(404).json({ error: 'file not found' })
+  }
+  res.sendFile(filepath)
+})
+
+// legacy single segment read --------------------
+app.get('/api/notes/:id', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  const noteid = req.params.id
+  if (!checksystemaccess(noteid, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const note = readnote(vaultdir, noteid)
+  if (!note) {
+    return res.status(404).json({ error: 'note not found' })
+  }
+  const loadeddoc = getdocifloaded(noteid)
+  if (loadeddoc) {
+    note.content = loadeddoc.getcontent()
+  }
+  res.json({ note })
+})
+
+// create or overwrite note --------------------
+app.post('/api/notes', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  const { note_id, title = '', content = '', author = 'wyatt' } = req.body
+  if (!note_id) {
+    return res.status(400).json({ error: 'note_id is required' })
+  }
+  if (!checksystemaccess(note_id, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
+  const initialcontent = title && !content.startsWith('#')
+    ? `# ${title}\n\n${content}`
+    : content
+
+  const entry = getdoc(vaultdir, historydir, note_id)
+  entry.doc.transact(() => {
+    entry.ytext.delete(0, entry.ytext.length)
+    entry.ytext.insert(0, initialcontent)
+  }, author)
+
+  entry.flushtodisk(author)
+  res.status(201).json({ status: 'created', note_id })
+})
+
+// edit note with diff --------------------
+app.post('/api/notes/:id/diff', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!checksystemaccess(req.params.id, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
+  try {
+    const updated = applydiff(vaultdir, historydir, req.params.id, req.body)
+    res.json({ status: 'ok', content: updated })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// get per user note edit history supporting nested paths --------------------
+app.get('/api/history', (req, res) => {
+  const noteid = req.query.id
+  const limit = parseInt(req.query.limit || '5', 10)
+  if (!noteid) {
+    return res.status(400).json({ error: 'id query parameter required' })
+  }
+  const history = gethistory(historydir, noteid, limit)
+  res.json({ history })
+})
+
+app.get('/api/notes/:id/history', (req, res) => {
+  const limit = parseInt(req.query.limit || '5', 10)
+  const history = gethistory(historydir, req.params.id, limit)
+  res.json({ history })
+})
+
+// read audit events log across vault or for a specific file --------------------
+app.get('/api/history/events', (req, res) => {
+  const fileid = req.query.id || null
+  const limit = parseInt(req.query.limit || '50', 10)
+  const events = getevents(historydir, fileid, limit)
+  res.json({ events })
+})
+
+// delete note supporting nested paths --------------------
+app.delete('/api/note', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  const noteid = req.query.id
+  if (!noteid) {
+    return res.status(400).json({ error: 'id query parameter required' })
+  }
+  if (!checksystemaccess(noteid, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const author = session?.user_id || 'user'
+  const deleted = deletenote(vaultdir, noteid, historydir, author)
+  if (!deleted) {
+    return res.status(404).json({ error: 'note not found' })
+  }
+  res.json({ status: 'deleted', note_id: noteid })
+})
+
+app.delete('/api/notes/:id', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!checksystemaccess(req.params.id, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const author = session?.user_id || 'user'
+  const deleted = deletenote(vaultdir, req.params.id, historydir, author)
+  if (!deleted) {
+    return res.status(404).json({ error: 'note not found' })
+  }
+  res.json({ status: 'deleted', note_id: req.params.id })
+})
+
+// rename or move note or folder endpoint --------------------
+app.post('/api/note/rename', (req, res) => {
+  const { old_id, new_id } = req.body
+  if (!old_id || !new_id) {
+    return res.status(400).json({ error: 'old_id and new_id are required' })
+  }
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!checksystemaccess(old_id, session) || !checksystemaccess(new_id, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const author = session?.user_id || 'user'
+  try {
+    const result = movenoteorfolder(vaultdir, historydir, old_id, new_id, author)
+    migratedocentry(result.source, result.destination, result.type === 'folder')
+    res.json({ status: 'ok', source: result.source, destination: result.destination, type: result.type })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// create folder endpoint --------------------
+app.post('/api/folder', (req, res) => {
+  const { folder_path } = req.body
+  if (!folder_path) {
+    return res.status(400).json({ error: 'folder_path is required' })
+  }
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!checksystemaccess(folder_path, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  try {
+    const created = createfolder(vaultdir, folder_path)
+    res.status(201).json({ status: 'ok', folder: created })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// delete folder endpoint --------------------
+app.delete('/api/folder', (req, res) => {
+  const folderpath = req.query.path || req.body?.folder_path
+  if (!folderpath) {
+    return res.status(400).json({ error: 'path parameter is required' })
+  }
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!checksystemaccess(folderpath, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const author = session?.user_id || 'user'
+  try {
+    const deleted = deletefolder(vaultdir, historydir, folderpath, author)
+    if (!deleted) {
+      return res.status(404).json({ error: 'folder not found' })
+    }
+    res.json({ status: 'deleted', folder: folderpath })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// copy note or folder endpoint --------------------
+app.post('/api/note/copy', (req, res) => {
+  const { source, destination } = req.body
+  if (!source || !destination) {
+    return res.status(400).json({ error: 'source and destination are required' })
+  }
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!checksystemaccess(source, session) || !checksystemaccess(destination, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const author = session?.user_id || 'user'
+  try {
+    const result = copynoteorfolder(vaultdir, historydir, source, destination, author)
+    res.json({ status: 'ok', ...result })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// gemini agent chat endpoint --------------------
+app.post('/api/agent/chat', async (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  const activeuserid = session ? session.user_id : 'wyatt'
+  const isadmin = session ? Boolean(session.admin) : false
+  const { message, history = [], active_note_id, open_tabs = [] } = req.body
+
+  if (!message) {
+    return res.status(400).json({ error: 'message is required' })
+  }
+
+  try {
+    const result = await runagentchat(message, {
+      active_user_id: activeuserid,
+      is_admin: isadmin,
+      active_note_id,
+      open_tabs,
+      history
+    })
+    res.json(result)
+  } catch (err) {
+    let cleanmessage = err.message || 'unknown error'
+    let errortype = 'error'
+
+    // clean up raw json errors from google genai sdk --------------------
+    try {
+      const parsed = JSON.parse(cleanmessage)
+      if (parsed.error) {
+        const code = parsed.error.code
+        const status = parsed.error.status
+        if (code === 503 || status === 'UNAVAILABLE') {
+          cleanmessage = 'one second...'
+          errortype = 'soft'
+        } else if (code === 429 || status === 'RESOURCE_EXHAUSTED') {
+          // detect whether quota is exhausted or temporary per-minute rate limit --------------------
+          const msg = (parsed.error.message || '').toLowerCase()
+          if (msg.includes('quota') || msg.includes('daily') || msg.includes('exceeded')) {
+            cleanmessage = 'limits reached. try again later!'
+            errortype = 'hard'
+          } else {
+            cleanmessage = 'one second...'
+            errortype = 'soft'
+          }
+        } else if (parsed.error.message) {
+          cleanmessage = parsed.error.message.toLowerCase()
+        }
+      }
+    } catch {
+      const lower = cleanmessage.toLowerCase()
+      if (lower.includes('503') || lower.includes('unavailable') || lower.includes('overloaded')) {
+        cleanmessage = 'one second...'
+        errortype = 'soft'
+      } else if (lower.includes('429') || lower.includes('resource_exhausted')) {
+        if (lower.includes('quota') || lower.includes('daily') || lower.includes('exceeded')) {
+          cleanmessage = 'limits reached. try again later!'
+          errortype = 'hard'
+        } else {
+          cleanmessage = 'one second...'
+          errortype = 'soft'
+        }
+      }
+    }
+
+    res.status(500).json({ error: cleanmessage, error_type: errortype })
+  }
+})
+
+// live websocket server for yjs sync --------------------
+const wss = new WebSocketServer({ noServer: true })
+
+server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url, `http://${request.headers.host}`)
+  if (url.pathname.startsWith('/ws')) {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request)
+    })
+  } else {
+    socket.destroy()
+  }
+})
+
+wss.on('connection', (ws, request) => {
+  const url = new URL(request.url, `http://${request.headers.host}`)
+  // decode pathname to preserve slashes and path components --------------------
+  const pathsegments = url.pathname.replace(/^\/ws\/?/, '')
+  const noteid = decodeURIComponent(pathsegments) || url.searchParams.get('note') || 'scratchpad'
+  const author = url.searchParams.get('author') || 'anonymous'
+
+  handlesocket(ws, vaultdir, historydir, noteid, author)
+})
+
+// start http and websocket server --------------------
+server.listen(port, host, () => {
+  console.log(`server running on http://${host}:${port}`)
+  console.log(`vault mounted at ${vaultdir}`)
+  console.log(`history mounted at ${historydir}`)
+
+  // watch vault directory for external file edits and sync live --------------------
+  initvaultwatcher(vaultdir, historydir, wss)
+})
