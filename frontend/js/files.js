@@ -2,7 +2,16 @@ import { api } from './api.js'
 import { state } from './state.js'
 import { opennote, closenote, saveworkspacestate, loadworkspacestate, isnoteidmatch, formatdraginsert, getdraggeditem, insertcontentintoactivenote } from './editor.js'
 import { closetab, rendertabs } from './tabs.js'
-import { ispreviewable, openpreviewtab } from './preview.js'
+import { ispreviewable, openpreviewtab, getpreviewtargetid, ispreviewtabid, schedulepreviewreload } from './preview.js'
+
+function isvalidopentab(tabid, allnotes) {
+  if (ispreviewtabid(tabid)) {
+    const target = getpreviewtargetid(tabid)
+    if (!target || !ispreviewable(target)) return false
+    return allnotes.some(n => isnoteidmatch(n.note_id, target))
+  }
+  return allnotes.some(n => isnoteidmatch(n.note_id, tabid))
+}
 
 // dom elements for file navigation --------------------
 const folderbreadcrumb = document.getElementById('folder-breadcrumb')
@@ -645,9 +654,13 @@ export function initfiles() {
   }
 
   // refresh file list when external filesystem changes occur --------------------
-  window.addEventListener('vault-changed', (e) => {
+  window.addEventListener('vault-changed', async (e) => {
     if (e.detail?.action === 'delete' && e.detail?.note_id) {
       closetab(e.detail.note_id)
+      closetab(`preview:${e.detail.note_id}`)
+    }
+    if (e.detail?.action === 'edit' && e.detail?.note_id) {
+      schedulepreviewreload(e.detail.note_id)
     }
     loadnotes()
   })
@@ -1035,12 +1048,10 @@ export async function loadnotes() {
 
     // prune tabs for notes that no longer exist on disk --------------------
     if (Array.isArray(state.opentabs) && state.opentabs.length > 0) {
-      const remainingtabs = state.opentabs.filter(tabid =>
-        state.allnotes.some(n => isnoteidmatch(n.note_id, tabid))
-      )
+      const remainingtabs = state.opentabs.filter(tabid => isvalidopentab(tabid, state.allnotes))
       if (remainingtabs.length !== state.opentabs.length) {
         state.opentabs = remainingtabs
-        if (state.activenoteid && !state.allnotes.some(n => isnoteidmatch(n.note_id, state.activenoteid))) {
+        if (state.activenoteid && !isvalidopentab(state.activenoteid, state.allnotes)) {
           if (remainingtabs.length > 0) {
             opennote(remainingtabs[0], { force: true, replacecurrent: false, switchfolder: false })
           } else {
@@ -1064,12 +1075,12 @@ export async function loadnotes() {
 
       if (notetoopen && state.allnotes.some(n => isnoteidmatch(n.note_id, notetoopen))) {
         if (saved && Array.isArray(saved.opentabs)) {
-          state.opentabs = saved.opentabs.filter(t => state.allnotes.some(n => isnoteidmatch(n.note_id, t)))
+          state.opentabs = saved.opentabs.filter(t => isvalidopentab(t, state.allnotes))
         }
         await opennote(notetoopen, { newtab: true, switchfolder: true })
         window.history.replaceState({}, '', '/editor.html')
       } else if (saved && saved.opentabs && saved.opentabs.length > 0) {
-        const existingtabs = saved.opentabs.filter(t => state.allnotes.some(n => isnoteidmatch(n.note_id, t)))
+        const existingtabs = saved.opentabs.filter(t => isvalidopentab(t, state.allnotes))
         state.opentabs = existingtabs
         if (saved.currentfolder) {
           state.currentfolder = saved.currentfolder

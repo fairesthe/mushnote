@@ -6,18 +6,16 @@ import { opennote } from './editor.js'
 const previewcontainer = document.getElementById('preview-viewer-container')
 const previewiframe = document.getElementById('preview-iframe')
 const previewaddressbar = document.getElementById('preview-address-bar')
-const previewstatus = document.getElementById('preview-status')
 const btnpreviewback = document.getElementById('btn-preview-back')
 const btnpreviewforward = document.getElementById('btn-preview-forward')
 const btnpreviewreload = document.getElementById('btn-preview-reload')
-const btnpreviewexternal = document.getElementById('btn-preview-external')
 const btnviewpage = document.getElementById('btn-view-page')
-const ctxitemviewpage = document.getElementById('ctx-item-view-page')
 
 // cached php wasm runtime state --------------------
 let phpinstance = null
 let isphploading = false
 let currentpreviewid = null
+let currentexternalurl = null
 
 // check if a note is previewable as a web page --------------------
 export function ispreviewable(noteid) {
@@ -32,9 +30,50 @@ export function getpreviewtargetid(tabid) {
   return tabid.slice('preview:'.length)
 }
 
+export function ispreviewtabid(tabid) {
+  return Boolean(tabid && tabid.startsWith('preview:'))
+}
+
+let previewreloadtimer = null
+
+async function notematches(a, b) {
+  if (!a || !b) return false
+  if (a === b) return true
+  try {
+    const { isnoteidmatch } = await import('./editor.js')
+    return isnoteidmatch(a, b)
+  } catch {
+    const norm = (s) => String(s).replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+    return norm(a) === norm(b)
+  }
+}
+
+// reload iframe when the backing source file changed --------------------
+export async function reloadactivepreviewifmatches(noteid) {
+  if (!state.activenoteid?.startsWith('preview:')) return
+  const target = getpreviewtargetid(state.activenoteid)
+  if (!target || !noteid) return
+  if (!(await notematches(noteid, target))) return
+  await renderpreview(target)
+}
+
+// debounce rapid yjs edit events into one preview reload --------------------
+export function schedulepreviewreload(noteid) {
+  if (!noteid) return
+  if (previewreloadtimer) clearTimeout(previewreloadtimer)
+  previewreloadtimer = setTimeout(() => {
+    previewreloadtimer = null
+    reloadactivepreviewifmatches(noteid)
+  }, 200)
+}
+
 // update visibility of view page button based on active note --------------------
 export function updateviewpagebutton() {
   if (!btnviewpage) return
+  if (state.activenoteid?.startsWith('preview:')) {
+    btnviewpage.classList.add('hidden')
+    return
+  }
   if (state.activenoteid && ispreviewable(state.activenoteid)) {
     btnviewpage.classList.remove('hidden')
   } else {
@@ -50,10 +89,13 @@ export function openpreviewtab(noteid) {
   opennote(previewtabid, { newtab: true, switchfolder: false })
 }
 
-// set status message in preview toolbar --------------------
-function setstatus(msg = '') {
-  if (!previewstatus) return
-  previewstatus.textContent = msg
+function setaddressbarvalue(value) {
+  if (!previewaddressbar || document.activeElement === previewaddressbar) return
+  previewaddressbar.value = value
+}
+
+function previewpathfornote(noteid) {
+  return `/preview/${noteid}`
 }
 
 // escape html entities for error displays --------------------
@@ -63,6 +105,52 @@ function escapehtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+function extracttitlefromhtml(html) {
+  const match = String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+  if (!match) return null
+  const title = match[1].replace(/\s+/g, ' ').trim()
+  return title || null
+}
+
+function titletabfallback(noteid) {
+  return noteid.split('/').pop() || noteid
+}
+
+async function updatepreviewtabtitle(title, noteid = currentpreviewid) {
+  if (!state.activenoteid?.startsWith('preview:')) return
+  if (!state.previewtitles) state.previewtitles = {}
+  const fallback = titletabfallback(noteid || getpreviewtargetid(state.activenoteid) || '')
+  const finaltitle = (title && String(title).trim()) || fallback
+  state.previewtitles[state.activenoteid] = finaltitle
+  document.title = `web: ${finaltitle} - mushnote`
+  try {
+    const { rendertabs } = await import('./tabs.js')
+    rendertabs()
+  } catch (err) {
+    console.warn('could not refresh preview tab label', err)
+  }
+}
+
+function applytitlefromiframe() {
+  try {
+    const idoc = previewiframe?.contentDocument || previewiframe?.contentWindow?.document
+    if (!idoc) return
+    const t = idoc.title?.trim()
+    if (t) {
+      updatepreviewtabtitle(t)
+    }
+  } catch {}
+}
+
+function applytitlefromexternalurl(url) {
+  try {
+    const parsed = new URL(url)
+    updatepreviewtabtitle(parsed.hostname || url)
+  } catch {
+    updatepreviewtabtitle(url)
+  }
 }
 
 // inject base href so relative assets load via express preview route --------------------
@@ -86,7 +174,6 @@ async function getphpinstance() {
   }
 
   isphploading = true
-  setstatus('booting php wasm...')
 
   try {
     const { PhpWeb } = await import('https://cdn.jsdelivr.net/npm/php-wasm/PhpWeb.mjs')
@@ -123,7 +210,6 @@ async function getphpinstance() {
 // execute php code inside client side wasm sandbox --------------------
 async function runphpcode(phpcode, filename) {
   const php = await getphpinstance()
-  setstatus('running php...')
 
   let stdout = ''
   let stderr = ''
@@ -159,41 +245,96 @@ async function runphpcode(phpcode, filename) {
   return stdout
 }
 
+function loaddocintosandbox(html) {
+  if (!previewiframe) return
+  currentexternalurl = null
+  try {
+    previewiframe.removeAttribute('src')
+  } catch {}
+  previewiframe.srcdoc = html
+}
+
+function loadexternalurl(url) {
+  if (!previewiframe) return
+  currentpreviewid = null
+  currentexternalurl = url
+  previewiframe.srcdoc = ''
+  previewiframe.src = url
+  setaddressbarvalue(url)
+  applytitlefromexternalurl(url)
+}
+
+function parseaddressinput(raw) {
+  const target = String(raw || '').trim()
+  if (!target) return { kind: 'empty' }
+
+  if (/^https?:\/\//i.test(target)) {
+    return { kind: 'external', url: target }
+  }
+
+  let noteid = target
+  const previewmarker = '/preview/'
+  const markeridx = target.indexOf(previewmarker)
+  if (markeridx !== -1) {
+    noteid = target.slice(markeridx + previewmarker.length)
+  } else if (target.startsWith('/')) {
+    noteid = target.replace(/^\//, '')
+  }
+
+  noteid = decodeURIComponent(noteid.split('?')[0].split('#')[0])
+  return { kind: 'vault', noteid }
+}
+
+// navigate from address bar input --------------------
+export async function navigatetoaddress(raw) {
+  const parsed = parseaddressinput(raw)
+  if (parsed.kind === 'empty') return
+
+  if (parsed.kind === 'external') {
+    loadexternalurl(parsed.url)
+    return
+  }
+
+  if (parsed.kind === 'vault' && parsed.noteid) {
+    await renderpreview(parsed.noteid)
+  }
+}
+
 // render page preview for given note id --------------------
 export async function renderpreview(noteid) {
   if (!previewcontainer || !previewiframe) return
   currentpreviewid = noteid
+  currentexternalurl = null
 
   const ext = (noteid.split('.').pop() || '').toLowerCase()
   const isphp = ext === 'php'
   const folderpath = noteid.includes('/') ? noteid.split('/').slice(0, -1).join('/') : ''
   const filename = noteid.split('/').pop() || noteid
 
-  if (previewaddressbar) {
-    previewaddressbar.textContent = `http://localhost:3000/preview/${noteid}`
-  }
+  setaddressbarvalue(previewpathfornote(noteid))
+  updatepreviewtabtitle(titletabfallback(noteid), noteid)
 
   previewcontainer.classList.remove('hidden')
 
   try {
-    setstatus('loading note...')
     const data = await api(`/api/note?id=${encodeURIComponent(noteid)}`)
     const rawcode = data?.note?.content || ''
 
+    let finalhtml
     if (isphp) {
-      setstatus('running in php wasm sandbox...')
       const htmloutput = await runphpcode(rawcode, filename)
-      const finalhtml = injectbasehref(htmloutput, folderpath)
-      previewiframe.srcdoc = finalhtml
-      setstatus('ready')
+      finalhtml = injectbasehref(htmloutput, folderpath)
     } else {
-      setstatus('rendering html...')
-      const finalhtml = injectbasehref(rawcode, folderpath)
-      previewiframe.srcdoc = finalhtml
-      setstatus('ready')
+      finalhtml = injectbasehref(rawcode, folderpath)
     }
+
+    const parsedtitle = extracttitlefromhtml(finalhtml)
+    if (parsedtitle) {
+      updatepreviewtabtitle(parsedtitle, noteid)
+    }
+
+    loaddocintosandbox(finalhtml)
   } catch (err) {
-    setstatus('error')
     previewiframe.srcdoc = `<pre style="color:#ef4444;background:#0a0a0a;padding:16px;font-family:monospace;white-space:pre-wrap;">${escapehtml(err.message)}</pre>`
   }
 }
@@ -205,9 +346,12 @@ export function hidepreview() {
   }
   if (previewiframe) {
     previewiframe.srcdoc = ''
+    try {
+      previewiframe.removeAttribute('src')
+    } catch {}
   }
   currentpreviewid = null
-  setstatus('')
+  currentexternalurl = null
 }
 
 // initialize preview event listeners --------------------
@@ -216,6 +360,16 @@ export function initpreview() {
     btnviewpage.addEventListener('click', () => {
       if (state.activenoteid && ispreviewable(state.activenoteid)) {
         openpreviewtab(state.activenoteid)
+      }
+    })
+  }
+
+  if (previewaddressbar) {
+    previewaddressbar.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        navigatetoaddress(previewaddressbar.value)
+        previewaddressbar.blur()
       }
     })
   }
@@ -240,14 +394,10 @@ export function initpreview() {
     btnpreviewreload.addEventListener('click', () => {
       if (currentpreviewid) {
         renderpreview(currentpreviewid)
-      }
-    })
-  }
-
-  if (btnpreviewexternal) {
-    btnpreviewexternal.addEventListener('click', () => {
-      if (currentpreviewid) {
-        window.open(`/preview/${encodeURI(currentpreviewid)}`, '_blank', 'noopener,noreferrer')
+      } else if (currentexternalurl) {
+        const url = currentexternalurl
+        previewiframe.src = url
+        setaddressbarvalue(url)
       }
     })
   }
@@ -255,7 +405,17 @@ export function initpreview() {
   // intercept relative links inside iframe to stay in preview --------------------
   if (previewiframe) {
     previewiframe.addEventListener('load', () => {
+      if (currentexternalurl) {
+        applytitlefromiframe()
+        if (!state.previewtitles?.[state.activenoteid]) {
+          applytitlefromexternalurl(currentexternalurl)
+        }
+        return
+      }
+
       try {
+        applytitlefromiframe()
+
         const idoc = previewiframe.contentDocument || previewiframe.contentWindow?.document
         if (!idoc) return
 
@@ -283,4 +443,3 @@ export function initpreview() {
     })
   }
 }
-

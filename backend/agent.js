@@ -1,9 +1,10 @@
 import { GoogleGenAI } from '@google/genai'
 import { loadconfig, getvaultpath, gethistorypath } from './config.js'
-import { readuserpreferences, readnote } from './vault.js'
+import { readuserpreferences, readnote, listnotes } from './vault.js'
 import { tooldeclarations, executetool, extractheadings } from './tools.js'
 import { getweather } from './weather.js'
 import { log } from './logger.js'
+import { compresschathistory } from './chathistory.js'
 
 // format local date and time with 12h am and pm --------------------
 function formatlocalnow(d = new Date(), timezone = '') {
@@ -159,6 +160,43 @@ function formattoolstatus(call) {
   return 'working...'
 }
 
+// turn reference attachments into prompt text for the model --------------------
+function formatreferenceattachment(att, vaultdir) {
+  if (!att || att.type !== 'reference') return ''
+
+  if (att.refKind === 'selection' && att.text) {
+    const loc = att.path ? ` from "${att.path}"` : ''
+    const lines = att.lineStart && att.lineEnd
+      ? ` (lines ${att.lineStart}-${att.lineEnd})`
+      : ''
+    return `[attached text selection${loc}${lines}]\n\`\`\`\n${att.text}\n\`\`\``
+  }
+
+  if (att.refKind === 'file' && att.path) {
+    const note = readnote(vaultdir, att.path)
+    if (note && typeof note.content === 'string' && note.content.length > 0) {
+      const maxchars = 12000
+      const body = note.content.length > maxchars
+        ? `${note.content.slice(0, maxchars)}\n...[truncated — use file_open for the rest]`
+        : note.content
+      return `[attached vault file: ${att.path}]\n\`\`\`\n${body}\n\`\`\``
+    }
+    return `[attached vault file: ${att.path} — use file_open or file_view to load it]`
+  }
+
+  if (att.refKind === 'folder' && att.path) {
+    const prefix = `${att.path}/`
+    const children = listnotes(vaultdir)
+      .filter((n) => n.note_id === att.path || n.note_id.startsWith(prefix))
+      .slice(0, 40)
+      .map((n) => `- ${n.note_id}`)
+    const listing = children.length > 0 ? `\n${children.join('\n')}` : ''
+    return `[attached vault folder: ${att.path}]${listing}`
+  }
+
+  return ''
+}
+
 // execute chat request with autonomous tool handling --------------------
 export async function runagentchat(prompt, options = {}) {
   const { active_user_id, is_admin = false, active_note_id, open_tabs = [], history = [], attachments = [], onProgress } = options
@@ -216,27 +254,7 @@ export async function runagentchat(prompt, options = {}) {
   const systeminstruction = buildsystemprompt(ainame, activeuser, humanusers, active_note_id, open_tabs, activenotecontent, aipersonality, weatherinfo, locationname, timezone)
   const ai = new GoogleGenAI({ apiKey: conf.gemini?.api_key })
 
-  // format conversation history for gemini chat session --------------------
-  const chathistory = []
-  if (history && Array.isArray(history)) {
-    for (const turn of history) {
-      if (turn.parts && Array.isArray(turn.parts)) {
-        chathistory.push({
-          role: turn.role === 'assistant' ? 'model' : turn.role,
-          parts: turn.parts
-        })
-      } else {
-        const role = turn.role === 'model' || turn.role === 'assistant' ? 'model' : 'user'
-        const text = turn.content || turn.text || turn.prompt || turn.reply || ''
-        if (text) {
-          chathistory.push({
-            role,
-            parts: [{ text }]
-          })
-        }
-      }
-    }
-  }
+  const chathistory = compresschathistory(history)
 
   const chat = ai.chats.create({
     model: 'gemini-3.5-flash-lite',
@@ -334,11 +352,14 @@ export async function runagentchat(prompt, options = {}) {
 
   // construct initial message parts with text and attachments --------------------
   const messageparts = []
-  if (prompt && typeof prompt === 'string') {
-    messageparts.push({ text: prompt })
-  }
+  const refblocks = []
   if (Array.isArray(attachments) && attachments.length > 0) {
     for (const att of attachments) {
+      if (att?.type === 'reference') {
+        const block = formatreferenceattachment(att, vaultdir)
+        if (block) refblocks.push(block)
+        continue
+      }
       if (att && att.data && att.mimeType) {
         messageparts.push({
           inlineData: {
@@ -348,6 +369,15 @@ export async function runagentchat(prompt, options = {}) {
         })
       }
     }
+  }
+
+  let usertext = prompt && typeof prompt === 'string' ? prompt.trim() : ''
+  if (refblocks.length > 0) {
+    const refsection = refblocks.join('\n\n')
+    usertext = usertext ? `${usertext}\n\n${refsection}` : refsection
+  }
+  if (usertext) {
+    messageparts.unshift({ text: usertext })
   }
 
   const initialpayload = messageparts.length > 0 ? messageparts : [{ text: '' }]
@@ -486,7 +516,8 @@ export async function runagentchat(prompt, options = {}) {
 
   let updatedhistory = []
   try {
-    updatedhistory = await chat.getHistory()
+    const rawhistory = await chat.getHistory()
+    updatedhistory = compresschathistory(rawhistory)
   } catch { }
 
   const elapsed = Date.now() - starttime

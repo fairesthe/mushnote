@@ -1,4 +1,4 @@
-import { api, applytheme, parsereadingscale } from './api.js'
+import { api, applytheme, parsereadingscale, resolveaccent } from './api.js'
 import { state } from './state.js'
 import { opennote, refreshreadingscale } from './editor.js'
 
@@ -46,8 +46,6 @@ const settingreadingscaleval = document.getElementById('setting-reading-scale-va
 const btnresetreadingscale = document.getElementById('btn-reset-reading-scale')
 const btnjumppersonalitysidebar = document.getElementById('btn-jump-personality-sidebar')
 
-const settingcoloruser = document.getElementById('setting-color-user')
-const settingcoloruserhex = document.getElementById('setting-color-user-hex')
 const settingcolorbg = document.getElementById('setting-color-bg')
 const settingcolorbghex = document.getElementById('setting-color-bg-hex')
 const settingcolortext = document.getElementById('setting-color-text')
@@ -174,7 +172,7 @@ async function refreshuserlist() {
 
       label.innerHTML = `
         <input type="radio" name="selected_user" value="${uid}" ${ischecked ? 'checked' : ''}>
-        <img class="user-radio-avatar" src="${u.avatar || (isbot ? '/avatars/ai.jpg' : '/avatars/wyatt.png')}" alt="${u.name}">
+        <img class="user-radio-avatar" src="${u.avatar || ''}" alt="${u.name}">
         <span class="user-radio-name">${u.name}</span>
         ${isbot ? '<span class="user-radio-badge bot">bot</span>' : ''}
         ${u.admin ? '<span class="user-radio-badge">admin</span>' : ''}
@@ -240,10 +238,6 @@ async function loadusersettings(targetuserid) {
     if (settingreadingscale) settingreadingscale.value = scalepercent
     if (settingreadingscaleval) settingreadingscaleval.textContent = `${scalepercent}%`
 
-    const ucolor = prefs['user-color'] || '#3b82f6'
-    if (settingcoloruser) settingcoloruser.value = ucolor
-    if (settingcoloruserhex) settingcoloruserhex.value = ucolor
-
     const bcolor = prefs['bg-color'] || '#000000'
     if (settingcolorbg) settingcolorbg.value = bcolor
     if (settingcolorbghex) settingcolorbghex.value = bcolor
@@ -252,7 +246,7 @@ async function loadusersettings(targetuserid) {
     if (settingcolortext) settingcolortext.value = tcolor
     if (settingcolortexthex) settingcolortexthex.value = tcolor
 
-    const acolor = prefs['accent-color'] || '#ffffff'
+    const acolor = resolveaccent(prefs)
     if (settingcoloraccent) settingcoloraccent.value = acolor
     if (settingcoloraccenthex) settingcoloraccenthex.value = acolor
 
@@ -306,7 +300,6 @@ async function loadusersettings(targetuserid) {
 // initialize all sidebar settings listeners --------------------
 export function initsidebarsettings() {
   // sync color pairs --------------------
-  syncpair(settingcoloruser, settingcoloruserhex)
   syncpair(settingcolorbg, settingcolorbghex)
   syncpair(settingcolortext, settingcolortexthex)
   syncpair(settingcoloraccent, settingcoloraccenthex)
@@ -437,10 +430,9 @@ export function initsidebarsettings() {
 
       const prefs = {
         name: settingdisplayname.value.trim(),
-        'user-color': settingcoloruser.value,
+        accent: settingcoloraccent.value,
         'bg-color': settingcolorbg.value,
         'text-color': settingcolortext.value,
-        'accent-color': settingcoloraccent.value,
         'reading-scale': settingreadingscale ? (parseInt(settingreadingscale.value, 10) || 100) : 100
       }
 
@@ -465,6 +457,8 @@ export function initsidebarsettings() {
         })
 
         // if editing self update local state and active theme --------------------
+        state.usercolormap[selecteduserid] = prefs.accent
+
         if (isself) {
           state.currentuser.name = prefs.name || selecteduserid
           state.currentuser.avatar = payload.avatar

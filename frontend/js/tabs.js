@@ -1,6 +1,12 @@
 import { state } from './state.js'
 import { opennote, closenote, saveworkspacestate, isnoteidmatch, formatdraginsert, getdraggeditem, insertcontentintoactivenote } from './editor.js'
 
+function getpreviewtablabel(tabnoteid, fallbackname) {
+  const stored = state.previewtitles?.[tabnoteid]
+  const label = stored || fallbackname
+  return `web: ${label}`
+}
+
 // dom elements for tabs --------------------
 const editortabsbar = document.getElementById('editor-tabs-bar')
 const tabstrack = document.getElementById('tabs-track')
@@ -58,10 +64,10 @@ export function rendertabs() {
     if (!ispreview && !tabname.includes('.')) {
       tabname = `${tabname}.md`
     }
-    const displayname = ispreview ? `preview: ${tabname}` : tabname
+    const displayname = ispreview ? getpreviewtablabel(tabnoteid, tabname) : tabname
 
     const tab = document.createElement('div')
-    tab.className = `editor-tab ${isnoteidmatch(tabnoteid, state.activenoteid) ? 'active' : ''} ${ispreview ? 'is-preview-tab' : ''}`
+    tab.className = `editor-tab ${isnoteidmatch(tabnoteid, state.activenoteid) ? 'active' : ''}`
     tab.dataset.index = i
     tab.dataset.noteId = tabnoteid
     tab.title = displayname

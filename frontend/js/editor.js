@@ -2,7 +2,7 @@ import { api, hextorgba } from './api.js'
 import { state } from './state.js'
 import { rendertabs } from './tabs.js'
 import { renderfolderview, updateactivefilerow, loadnotes } from './files.js'
-import { renderpreview, hidepreview, updateviewpagebutton } from './preview.js'
+import { renderpreview, hidepreview, updateviewpagebutton, getpreviewtargetid, schedulepreviewreload } from './preview.js'
 import {
   Editor,
   Extension,
@@ -343,6 +343,109 @@ export function getdraggeditem(e) {
   return null
 }
 
+// build reference payload from current editor text selection --------------------
+export function geteditorselectionreference() {
+  if (!state.activenoteid) return null
+
+  const notelabel = state.activenoteid.split('/').pop() || state.activenoteid
+
+  if (tiptapinstance && ismarkdownfile(state.activenoteid)) {
+    const { from, to, empty } = tiptapinstance.state.selection
+    if (empty || from === to) return null
+    const text = tiptapinstance.state.doc.textBetween(from, to, '\n').trim()
+    if (!text) return null
+    const before = tiptapinstance.state.doc.textBetween(0, from, '\n')
+    const selected = tiptapinstance.state.doc.textBetween(from, to, '\n')
+    const linestart = (before.match(/\n/g) || []).length + 1
+    const lineend = linestart + (selected.match(/\n/g) || []).length
+    return {
+      type: 'reference',
+      refKind: 'selection',
+      name: linestart === lineend ? `${notelabel}:${linestart}` : `${notelabel}:${linestart}-${lineend}`,
+      path: state.activenoteid,
+      text,
+      lineStart: linestart,
+      lineEnd: lineend
+    }
+  }
+
+  if (cmview) {
+    const sel = cmview.state.selection.main
+    if (sel.from === sel.to) return null
+    const text = cmview.state.sliceDoc(sel.from, sel.to).trim()
+    if (!text) return null
+    const linestart = cmview.state.doc.lineAt(sel.from).number
+    const lineend = cmview.state.doc.lineAt(sel.to).number
+    return {
+      type: 'reference',
+      refKind: 'selection',
+      name: linestart === lineend ? `${notelabel}:${linestart}` : `${notelabel}:${linestart}-${lineend}`,
+      path: state.activenoteid,
+      text,
+      lineStart: linestart,
+      lineEnd: lineend
+    }
+  }
+
+  if (noteeditor && !noteeditor.classList.contains('hidden')) {
+    const start = noteeditor.selectionStart ?? 0
+    const end = noteeditor.selectionEnd ?? 0
+    if (start === end) return null
+    const text = noteeditor.value.slice(start, end).trim()
+    if (!text) return null
+    const before = noteeditor.value.slice(0, start)
+    const chunk = noteeditor.value.slice(start, end)
+    const linestart = (before.match(/\n/g) || []).length + 1
+    const lineend = linestart + (chunk.match(/\n/g) || []).length
+    return {
+      type: 'reference',
+      refKind: 'selection',
+      name: linestart === lineend ? `${notelabel}:${linestart}` : `${notelabel}:${linestart}-${lineend}`,
+      path: state.activenoteid,
+      text,
+      lineStart: linestart,
+      lineEnd: lineend
+    }
+  }
+
+  return null
+}
+
+const editorcontextmenu = document.getElementById('editor-context-menu')
+const ctxitemaskai = document.getElementById('ctx-item-ask-ai')
+let pendingeditorselectionref = null
+let iseditoraskmenubound = false
+
+function closeeditorcontextmenu() {
+  if (editorcontextmenu) editorcontextmenu.classList.add('hidden')
+  pendingeditorselectionref = null
+}
+
+function openeditorselectionmenu(x, y, ref) {
+  if (!editorcontextmenu || !ref) return
+  pendingeditorselectionref = ref
+  editorcontextmenu.style.left = `${x}px`
+  editorcontextmenu.style.top = `${y}px`
+  editorcontextmenu.classList.remove('hidden')
+}
+
+function initeditoraskaimenu() {
+  if (iseditoraskmenubound) return
+  iseditoraskmenubound = true
+
+  document.addEventListener('click', closeeditorcontextmenu)
+
+  if (ctxitemaskai) {
+    ctxitemaskai.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const ref = pendingeditorselectionref
+      closeeditorcontextmenu()
+      if (!ref) return
+      window.dispatchEvent(new CustomEvent('mushnote-add-ai-reference', { detail: ref }))
+    })
+  }
+}
+
 // clear all drag target visual indicators --------------------
 export function clearalldraghighlights() {
   document.querySelectorAll('.drag-over, .is-drag-source').forEach(el => {
@@ -417,6 +520,7 @@ function initplaineditor() {
             author: state.currentuser ? state.currentuser.id : 'unknown'
           })
         })
+        schedulepreviewreload(targetnoteid)
       } catch (err) {
         console.error('auto save failed', err)
       }
@@ -520,10 +624,10 @@ export function resolveauthorcolor(author) {
   if (state.usercolormap && state.usercolormap[author]) {
     return state.usercolormap[author]
   }
-  if (author === 'ai' || author === (state.aiusername || 'ai')) {
-    return '#3b82f6'
+  if (author === 'ai' || author === state.aiuserid) {
+    return state.usercolormap?.[author] || state.usercolormap?.[state.aiuserid] || '#737373'
   }
-  return '#10b981'
+  return '#737373'
 }
 
 // create user avatar badge for flash highlights --------------------
@@ -531,7 +635,9 @@ function createavatarbadge(author, usercolor) {
   const isexternal = !author || author === 'external'
   const useravatar = isexternal
     ? '/resources/icons/files/common.png'
-    : (state.useravatarmap?.[author] || (author === 'ai' ? '/avatars/ai.jpg' : `/avatars/${author}.png`))
+    : (state.useravatarmap?.[author]
+      || (author === 'ai' || author === state.aiuserid ? state.aiavatar : null)
+      || (author ? `/avatars/${author}.png` : null))
 
   const anchor = document.createElement('span')
   anchor.className = 'edit-user-anchor'
@@ -776,6 +882,7 @@ export function initcodemirror() {
                   author: state.currentuser ? state.currentuser.id : 'unknown'
                 })
               })
+              schedulepreviewreload(targetnoteid)
             } catch (err) {
               console.error('auto save failed', err)
             }
@@ -1099,6 +1206,14 @@ export function inittiptapeditor() {
           return false
         },
         contextmenu: (view, event) => {
+          const ref = geteditorselectionreference()
+          if (ref) {
+            event.preventDefault()
+            event.stopPropagation()
+            openeditorselectionmenu(event.clientX, event.clientY, ref)
+            return true
+          }
+
           const link = event.target?.closest?.('a')
           if (!link) return false
 
@@ -1828,6 +1943,14 @@ export function initeditorlinkevents() {
 
   // right click opens note link in new tab --------------------
   tiptapeditorcontainer.addEventListener('contextmenu', (e) => {
+    const ref = geteditorselectionreference()
+    if (ref) {
+      e.preventDefault()
+      e.stopPropagation()
+      openeditorselectionmenu(e.clientX, e.clientY, ref)
+      return
+    }
+
     const link = e.target.closest('a')
     if (!link) return
 
@@ -1887,6 +2010,25 @@ export function initeditorlinkevents() {
       if (e.relatedTarget && editorcontainer.contains(e.relatedTarget)) return
       editorcontainer.classList.remove('drag-over')
     })
+
+    editorcontainer.addEventListener('contextmenu', (e) => {
+      if (ismarkdownfile(state.activenoteid) && tiptapinstance) return
+      const ref = geteditorselectionreference()
+      if (!ref) return
+      e.preventDefault()
+      e.stopPropagation()
+      openeditorselectionmenu(e.clientX, e.clientY, ref)
+    })
+
+    if (noteeditor) {
+      noteeditor.addEventListener('contextmenu', (e) => {
+        const ref = geteditorselectionreference()
+        if (!ref) return
+        e.preventDefault()
+        e.stopPropagation()
+        openeditorselectionmenu(e.clientX, e.clientY, ref)
+      })
+    }
 
     editorcontainer.addEventListener('drop', async (e) => {
       editorcontainer.classList.remove('drag-over')
@@ -1957,9 +2099,16 @@ export function connectnotesocket(noteid) {
       const data = JSON.parse(event.data)
       const myid = state.currentuser?.id || state.currentuser?.user_id
 
-      if (data.type === 'edit_event' && isnoteidmatch(data.note_id, state.activenoteid)) {
-        if (data.author && myid && data.author === myid) return
-        handleotheruseredit(data)
+      if (data.type === 'edit_event') {
+        const previewtarget = state.activenoteid?.startsWith('preview:')
+          ? getpreviewtargetid(state.activenoteid)
+          : null
+        if (previewtarget && isnoteidmatch(data.note_id, previewtarget)) {
+          schedulepreviewreload(data.note_id)
+        } else if (isnoteidmatch(data.note_id, state.activenoteid)) {
+          if (data.author && myid && data.author === myid) return
+          handleotheruseredit(data)
+        }
       } else if (data.type === 'vault_changed') {
         if (data.action === 'create' && data.note_id) {
           marksessioncreated(data.note_id)
@@ -2644,7 +2793,12 @@ export async function opennote(noteid, options = {}) {
   if (!ispreview && !tabname.includes('.')) {
     tabname = `${tabname}.md`
   }
-  document.title = ispreview ? `preview: ${tabname} - mushnote` : `${tabname} - mushnote`
+  if (ispreview) {
+    const stored = state.previewtitles?.[noteid]
+    document.title = stored ? `web: ${stored} - mushnote` : `web: ${tabname} - mushnote`
+  } else {
+    document.title = `${tabname} - mushnote`
+  }
   const opts = typeof options === 'boolean' ? { force: options } : (options || {})
   const { newtab = false, replacecurrent = true, switchfolder = true } = opts
 
@@ -2683,6 +2837,7 @@ export async function opennote(noteid, options = {}) {
     updateactivefilerow()
     updateviewpagebutton()
     await renderpreview(rawtargetid)
+    connectnotesocket(rawtargetid)
     updateviewpagebutton()
     saveworkspacestate()
     return
@@ -2953,4 +3108,5 @@ export function renderflashhighlight(olddoc, newdoc, edits = [], usercolor = '#3
 }
 
 // initialize editor note link click and contextmenu listeners on load --------------------
+initeditoraskaimenu()
 initeditorlinkevents()

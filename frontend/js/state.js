@@ -13,6 +13,8 @@ export const state = {
   useravatarmap: {},
   showsystemfolder: false,
   ainame: 'assistant',
-  aiavatar: '/avatars/ai.jpg'
+  aiavatar: null,
+  aiuserid: null,
+  previewtitles: {}
 }
 

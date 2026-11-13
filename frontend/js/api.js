@@ -25,12 +25,17 @@ export function parsereadingscale(val) {
   return num > 10 ? num / 100 : num
 }
 
+export function resolveaccent(prefs = {}) {
+  if (!prefs || typeof prefs !== 'object') return '#ffffff'
+  return prefs.accent || prefs['accent-color'] || prefs['user-color'] || '#ffffff'
+}
+
 // apply user theme preferences --------------------
 export function applytheme(prefs = {}) {
   const root = document.documentElement
   root.style.setProperty('--bg-color', prefs['bg-color'] || '#000000')
   root.style.setProperty('--text-color', prefs['text-color'] || '#ededed')
-  const accent = prefs['accent-color'] || '#ffffff'
+  const accent = resolveaccent(prefs)
   root.style.setProperty('--accent-color', accent)
   root.style.setProperty('--highlight-color', hextorgba(accent, 0.35))
 

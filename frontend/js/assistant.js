@@ -1,9 +1,10 @@
-import { api } from './api.js'
+import { api, resolveaccent } from './api.js'
 import { state } from './state.js'
-import { loadnotes, navigatefolder } from './files.js'
-import { opennote, closenote, saveworkspacestate, marksessioncreated, opennotelink, isexternalurl } from './editor.js'
+import { loadnotes, navigatefolder, clearalldraghighlights } from './files.js'
+import { opennote, closenote, saveworkspacestate, marksessioncreated, opennotelink, isexternalurl, getdraggeditem, isnoteidmatch } from './editor.js'
+import { getpreviewtargetid, renderpreview } from './preview.js'
 import { rendertabs, closetab } from './tabs.js'
-import { updatetogglebuttons } from './layout.js'
+import { updatetogglebuttons, ensureaidraweropen } from './layout.js'
 import { renderchatmarkdown } from './tiptap.bundle.js'
 
 // dom elements for ai assistant --------------------
@@ -216,6 +217,77 @@ async function handlefileupload(filelist) {
   if (aifileinput) aifileinput.value = ''
 }
 
+// add vault path or editor selection as a chat reference chip --------------------
+export function addreferenceattachment(ref) {
+  if (!ref || !ref.refKind) return false
+  if (currentattachments.length >= maxfiles) {
+    alert(`maximum ${maxfiles} files can be attached at a time`)
+    return false
+  }
+
+  const duplicate = currentattachments.some((att) => {
+    if (att.type !== 'reference' || att.refKind !== ref.refKind) return false
+    if (ref.refKind === 'selection') {
+      return att.path === ref.path && att.lineStart === ref.lineStart && att.lineEnd === ref.lineEnd && att.text === ref.text
+    }
+    return att.path === ref.path
+  })
+  if (duplicate) return true
+
+  const name = ref.name || ref.path || 'reference'
+  currentattachments.push({
+    type: 'reference',
+    refKind: ref.refKind,
+    name,
+    path: ref.path || '',
+    text: ref.text || '',
+    lineStart: ref.lineStart || null,
+    lineEnd: ref.lineEnd || null
+  })
+  renderattachmentspreview()
+  return true
+}
+
+function referenceiconsvg(refkind) {
+  if (refkind === 'folder') {
+    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>'
+  }
+  if (refkind === 'selection') {
+    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>'
+  }
+  return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#a3a3a3" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>'
+}
+
+function referencebadge(refkind) {
+  if (refkind === 'folder') return 'folder'
+  if (refkind === 'selection') return 'text'
+  return 'file'
+}
+
+function mapattachmentforapi(att) {
+  if (att.type === 'reference') {
+    return {
+      name: att.name,
+      type: 'reference',
+      refKind: att.refKind,
+      path: att.path,
+      text: att.text,
+      lineStart: att.lineStart,
+      lineEnd: att.lineEnd
+    }
+  }
+  return {
+    name: att.name,
+    type: att.type,
+    mimeType: att.mimeType,
+    data: att.data
+  }
+}
+
+function renderreferencepill(att) {
+  return `<div class="msg-attachment-pill">${referenceiconsvg(att.refKind)} <span>${att.name}</span></div>`
+}
+
 // render attachment preview chips at top of chat input --------------------
 function renderattachmentspreview() {
   if (!aiattachmentspreview) return
@@ -244,7 +316,9 @@ function renderattachmentspreview() {
       iconbox.className = 'attachment-icon-box'
 
       const svgicon = document.createElement('div')
-      if (att.type === 'pdf') {
+      if (att.type === 'reference') {
+        svgicon.innerHTML = referenceiconsvg(att.refKind)
+      } else if (att.type === 'pdf') {
         svgicon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ef4444" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="9" y1="15" x2="15" y2="15"></line></svg>'
       } else {
         svgicon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#10b981" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>'
@@ -252,7 +326,11 @@ function renderattachmentspreview() {
 
       const badge = document.createElement('span')
       badge.className = 'attachment-badge'
-      badge.textContent = att.type === 'pdf' ? 'pdf' : 'sound'
+      if (att.type === 'reference') {
+        badge.textContent = referencebadge(att.refKind)
+      } else {
+        badge.textContent = att.type === 'pdf' ? 'pdf' : 'sound'
+      }
 
       const name = document.createElement('span')
       name.className = 'attachment-name'
@@ -295,8 +373,7 @@ export async function loadaiinfo() {
     if (data.users) {
       for (const u of data.users) {
         const isbot = Boolean(u.bot || u.role === 'ai')
-        const color = u.preferences?.['user-color'] || (isbot ? '#10b981' : '#3b82f6')
-        state.usercolormap[u.id] = color
+        state.usercolormap[u.id] = resolveaccent(u.preferences)
         if (u.avatar) {
           state.useravatarmap[u.id] = u.avatar
         }
@@ -304,14 +381,28 @@ export async function loadaiinfo() {
     }
     const aiuser = data.users.find(u => u.bot || u.role === 'ai')
     if (aiuser) {
+      state.aiuserid = aiuser.id || aiuser.username || 'ai'
       state.ainame = aiuser.name || 'assistant'
-      state.aiavatar = aiuser.avatar || '/avatars/ai.jpg'
+      state.aiavatar = aiuser.avatar || null
+      if (aiuser.avatar) {
+        state.useravatarmap[state.aiuserid] = aiuser.avatar
+      }
       if (aiheadername) aiheadername.textContent = state.ainame
       if (aibtnlabel) aibtnlabel.textContent = state.ainame
-      if (aidraweravatar) aidraweravatar.src = aiuser.avatar
-      if (aibtnavatar) aibtnavatar.src = aiuser.avatar
+      if (aidraweravatar) {
+        if (aiuser.avatar) aidraweravatar.src = aiuser.avatar
+        else aidraweravatar.removeAttribute('src')
+      }
+      if (aibtnavatar) {
+        if (aiuser.avatar) aibtnavatar.src = aiuser.avatar
+        else aibtnavatar.removeAttribute('src')
+      }
       if (aiinput) {
         aiinput.placeholder = `ask ${state.ainame} anything...`
+      }
+      const ctxaskai = document.getElementById('ctx-item-ask-ai')
+      if (ctxaskai) {
+        ctxaskai.innerHTML = `<img class="btn-icon-img" src="/resources/icons/files/text.png" alt="ask"> ask ${state.ainame}`
       }
       updatetogglebuttons()
     }
@@ -735,7 +826,9 @@ export async function senduserprompt(text) {
   if (attached.length > 0) {
     attachmenthtml = '<div class="msg-attachments">'
     for (const a of attached) {
-      if (a.type === 'image' && a.previewUrl) {
+      if (a.type === 'reference') {
+        attachmenthtml += renderreferencepill(a)
+      } else if (a.type === 'image' && a.previewUrl) {
         attachmenthtml += `<img src="${a.previewUrl}" class="msg-attachment-img" alt="${a.name}" title="${a.name}">`
       } else if (a.type === 'audio') {
         attachmenthtml += `<div class="msg-attachment-pill"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#10b981" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg> <span>${a.name}</span></div>`
@@ -801,12 +894,7 @@ export async function senduserprompt(text) {
       headers,
       body: JSON.stringify({
         message: prompt,
-        attachments: attached.map(a => ({
-          name: a.name,
-          type: a.type,
-          mimeType: a.mimeType,
-          data: a.data
-        })),
+        attachments: attached.map(mapattachmentforapi),
         active_note_id: state.activenoteid,
         open_tabs: state.opentabs,
         history: aichathistory
@@ -1067,6 +1155,21 @@ export async function senduserprompt(text) {
       // refresh notes tree in sidebar only so active editor view and animations are not interrupted --------------------
       await loadnotes()
 
+      if (state.activenoteid?.startsWith('preview:')) {
+        const previewtarget = getpreviewtargetid(state.activenoteid)
+        if (previewtarget) {
+          const sourcetouched = finaltools.some((call) => {
+            const toolpath = call.args?.path || call.args?.file_path || call.args?.note_id
+            if (!toolpath) return false
+            if (call.name !== 'file_edit_diff' && call.name !== 'file_create') return false
+            return isnoteidmatch(toolpath, previewtarget)
+          })
+          if (sourcetouched) {
+            await renderpreview(previewtarget)
+          }
+        }
+      }
+
       // if ai generated a new file or opened a file for user open it in a new tab --------------------
       for (const call of finaltools) {
         const isnewfile = call.name === 'file_create'
@@ -1087,7 +1190,10 @@ export async function senduserprompt(text) {
         // close tabs if file was deleted --------------------
         if (call.name === 'file_delete') {
           const delid = call.args?.path || call.args?.file_path || call.args?.note_id
-          if (delid) closetab(delid)
+          if (delid) {
+            closetab(delid)
+            closetab(`preview:${delid}`)
+          }
         }
 
         // close tabs and safely adjust folder view if folder was deleted --------------------
@@ -1456,18 +1562,64 @@ export function initassistant() {
     })
   }
 
-  // drag and drop files into drawer --------------------
-  if (aidrawer) {
-    aidrawer.addEventListener('dragover', (e) => {
+  function isvaultitemdrag(e) {
+    return Boolean(state.activefiledrag || e.dataTransfer?.types?.includes('application/mushnote-item'))
+  }
+
+  function handledropontochat(e) {
+    const vaultitem = getdraggeditem(e)
+    if (vaultitem && (vaultitem.type === 'file' || vaultitem.type === 'folder')) {
       e.preventDefault()
+      e.stopPropagation()
+      state.activefiledrag = null
+      clearalldraghighlights()
+      const label = vaultitem.name || vaultitem.title || vaultitem.path?.split('/').pop() || vaultitem.path
+      addreferenceattachment({
+        refKind: vaultitem.type === 'folder' ? 'folder' : 'file',
+        name: label,
+        path: vaultitem.path
+      })
+      ensureaidraweropen()
+      return true
+    }
+    if (e.dataTransfer?.files?.length) {
+      e.preventDefault()
+      e.stopPropagation()
+      handlefileupload(e.dataTransfer.files)
+      return true
+    }
+    return false
+  }
+
+  function bindchatdropzone(el) {
+    if (!el) return
+    el.addEventListener('dragover', (e) => {
+      if (!isvaultitemdrag(e) && !e.dataTransfer?.types?.includes('Files')) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+      el.classList.add('drag-over')
     })
-    aidrawer.addEventListener('drop', (e) => {
-      e.preventDefault()
-      if (e.dataTransfer?.files?.length) {
-        handlefileupload(e.dataTransfer.files)
-      }
+    el.addEventListener('dragleave', (e) => {
+      if (e.relatedTarget && el.contains(e.relatedTarget)) return
+      el.classList.remove('drag-over')
+    })
+    el.addEventListener('drop', (e) => {
+      el.classList.remove('drag-over')
+      handledropontochat(e)
     })
   }
+
+  // drag vault items or files into chat --------------------
+  bindchatdropzone(aidrawer)
+  bindchatdropzone(aiform)
+  if (aiinput) bindchatdropzone(aiinput)
+
+  window.addEventListener('mushnote-add-ai-reference', (e) => {
+    if (!e.detail) return
+    if (addreferenceattachment(e.detail)) {
+      ensureaidraweropen()
+    }
+  })
 
   // right click to open context menu for assistant --------------------
   if (aidrawer) {

@@ -106,14 +106,6 @@
               <div class="settings-section-subtitle">theme colors</div>
               <div class="settings-colors-grid">
                 <div class="settings-color-row">
-                  <label for="setting-color-user">user</label>
-                  <div class="color-picker-group">
-                    <input type="color" id="setting-color-user" value="#3b82f6">
-                    <input type="text" id="setting-color-user-hex" class="color-hex-input" value="#3b82f6" maxlength="7">
-                  </div>
-                </div>
-
-                <div class="settings-color-row">
                   <label for="setting-color-bg">background</label>
                   <div class="color-picker-group">
                     <input type="color" id="setting-color-bg" value="#000000">
@@ -216,12 +208,6 @@
       <!-- browser style draggable tab bar -------------------- -->
       <div id="editor-tabs-bar" class="editor-tabs-bar hidden">
         <div id="tabs-track" class="tabs-track"></div>
-        <div class="tabs-bar-actions">
-          <button type="button" id="btn-view-page" class="btn-view-page hidden" title="view page preview">
-            <span class="btn-view-page-icon">&lt;/&gt;</span>
-            <span class="btn-view-page-text">view page</span>
-          </button>
-        </div>
       </div>
 
       <div id="empty-state" class="empty-state">
@@ -270,6 +256,10 @@
         <div class="editor-body">
           <div id="tiptap-editor" class="tiptap-editor"></div>
           <div id="plain-editor-wrap" class="plain-editor-wrap hidden">
+            <button type="button" id="btn-view-page" class="btn-view-page btn-view-page-float hidden" title="view page preview">
+              <span class="btn-view-page-icon">&lt;/&gt;</span>
+              <span class="btn-view-page-text">view page</span>
+            </button>
             <div id="codemirror-editor" class="codemirror-editor"></div>
             <div class="editor-backdrop" id="editor-backdrop" aria-hidden="true" style="display:none"></div>
             <textarea id="note-editor" class="note-textarea hidden" placeholder="start typing..." spellcheck="false"></textarea>
@@ -292,11 +282,7 @@
             <button type="button" id="btn-preview-forward" class="preview-nav-btn" title="forward">&gt;</button>
             <button type="button" id="btn-preview-reload" class="preview-nav-btn" title="reload">reload</button>
           </div>
-          <div id="preview-address-bar" class="preview-address-bar"></div>
-          <div class="preview-nav-actions">
-            <span id="preview-status" class="preview-status"></span>
-            <button type="button" id="btn-preview-external" class="preview-nav-btn" title="open in new browser tab">open in browser</button>
-          </div>
+          <input type="text" id="preview-address-bar" class="preview-address-bar" spellcheck="false" autocomplete="off" placeholder="/preview/... or https://...">
         </div>
         <div class="preview-frame-wrap">
           <iframe id="preview-iframe" class="preview-iframe" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
@@ -311,7 +297,7 @@
     <aside id="ai-drawer" class="ai-drawer is-collapsed">
       <header class="ai-header">
         <div class="ai-title-wrap">
-          <img id="ai-drawer-avatar" class="ai-avatar-small" src="/avatars/ai.jpg" alt="ai">
+          <img id="ai-drawer-avatar" class="ai-avatar-small" alt="ai">
           <h3 id="ai-header-name" class="ai-name">assistant</h3>
         </div>
         <button id="btn-close-ai" class="icon-btn" title="close">×</button>
@@ -375,6 +361,11 @@
     <div id="ctx-item-delete-folder" class="context-item text-danger"><img class="btn-icon-img" src="/resources/icons/files/delete.png" alt="delete"> delete folder...</div>
     <div id="ctx-item-media" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/folder.png" alt="media"> media...</div>
     <div id="ctx-item-system" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/folder.png" alt="system"> system...</div>
+  </div>
+
+  <!-- editor selection context menu -------------------- -->
+  <div id="editor-context-menu" class="context-menu hidden">
+    <div id="ctx-item-ask-ai" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/text.png" alt="ask"> ask assistant</div>
   </div>
 
   <!-- custom right click context menu for assistant -------------------- -->

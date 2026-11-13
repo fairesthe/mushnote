@@ -11,6 +11,18 @@ const btncloseai = document.getElementById('btn-close-ai')
 const aiinput = document.getElementById('ai-input')
 
 // update toggle buttons state arrows and positions --------------------
+// open ai drawer and focus chat input --------------------
+export function ensureaidraweropen() {
+  if (!aidrawer) return
+  if (aidrawer.classList.contains('is-collapsed')) {
+    aidrawer.classList.remove('is-collapsed')
+    updatetogglebuttons()
+  }
+  if (aiinput) {
+    aiinput.focus()
+  }
+}
+
 export function updatetogglebuttons() {
   if (tabtogglefiles && sidebarpane) {
     const filesopen = !sidebarpane.classList.contains('is-collapsed')
@@ -30,9 +42,12 @@ export function updatetogglebuttons() {
     if (aiopen) {
       tabtoggleai.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>'
     } else {
-      const avatar = state.aiavatar || '/avatars/ai.jpg'
       const name = state.ainame || 'assistant'
-      tabtoggleai.innerHTML = `<img class="tab-toggle-ai-avatar" src="${avatar}" alt="${name}"><span class="tab-toggle-ai-name">${name}</span>`
+      const avatar = state.aiavatar
+      const avatarmarkup = avatar
+        ? `<img class="tab-toggle-ai-avatar" src="${avatar}" alt="${name}">`
+        : ''
+      tabtoggleai.innerHTML = `${avatarmarkup}<span class="tab-toggle-ai-name">${name}</span>`
     }
   }
 }

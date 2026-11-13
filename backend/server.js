@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import express from 'express'
 import { WebSocketServer } from 'ws'
 import { loadconfig, saveconfig, getvaultpath, gethistorypath, getrootdir } from './config.js'
-import { initvault, getnotepath, listnotes, listfolders, readnote, deletenote, movenoteorfolder, createfolder, deletefolder, copynoteorfolder, getuniqueconflictpath, initsystemnotes, readuserpreferences, updateuserpreferences } from './vault.js'
+import { initvault, getnotepath, listnotes, listfolders, readnote, deletenote, movenoteorfolder, createfolder, deletefolder, copynoteorfolder, getuniqueconflictpath, initsystemnotes, readuserpreferences, updateuserpreferences, normalizepreferences } from './vault.js'
 import { inithistory, gethistory, getevents, getnoteauthorship } from './history.js'
 import { getdoc, getdocifloaded, applydiff, handlesocket, migratedocentry } from './sync.js'
 import { verifypassword, setuserauth, createsession, getsession, extracttoken, formatavatarurl } from './auth.js'
@@ -133,10 +133,7 @@ app.get('/api/auth/users', (req, res) => {
       has_auth: Boolean(u.auth),
       can_login: !isbot,
       preferences: {
-        'user-color': prefs['user-color'] || (isbot ? '#10b981' : '#3b82f6'),
-        'bg-color': prefs['bg-color'] || '#000000',
-        'text-color': prefs['text-color'] || '#ededed',
-        'accent-color': prefs['accent-color'] || '#ffffff',
+        ...normalizepreferences(prefs),
         'last-open-note': prefs['last-open-note'] || null
       }
     }
@@ -278,7 +275,7 @@ app.post('/api/admin/users', (req, res) => {
     username: cleanusername,
     admin: Boolean(admin),
     bot: isbot,
-    avatar: formatavatarurl(avatar) || (isbot ? '/avatars/ai.jpg' : '/avatars/wyatt.png')
+    avatar: formatavatarurl(avatar) || (isbot ? '/avatars/default_ai.png' : '/avatars/default_admin.png')
   }
 
   if (!conf.users) {

@@ -587,6 +587,36 @@ export function copynoteorfolder(vaultdir, historydir, source, destination, auth
   }
 }
 
+// single accent color for theme and collaboration highlights --------------------
+export function resolveaccent(prefs = {}) {
+  if (!prefs || typeof prefs !== 'object') return '#ffffff'
+  return prefs.accent || prefs['accent-color'] || prefs['user-color'] || '#ffffff'
+}
+
+// pick a vivid random hex accent for new accounts --------------------
+export function randomaccentcolor() {
+  const hue = Math.floor(Math.random() * 360)
+  const s = 0.72
+  const l = 0.58
+  const a = s * Math.min(l, 1 - l)
+  const f = (n) => {
+    const k = (n + hue / 30) % 12
+    return l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1)
+  }
+  const r = Math.round(f(0) * 255)
+  const g = Math.round(f(8) * 255)
+  const b = Math.round(f(4) * 255)
+  return `#${[r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')}`
+}
+
+export function normalizepreferences(prefs = {}) {
+  const base = prefs && typeof prefs === 'object' ? { ...prefs } : {}
+  delete base['user-color']
+  delete base['accent-color']
+  base.accent = resolveaccent(prefs)
+  return base
+}
+
 // read user preferences helper --------------------
 export function readuserpreferences(vaultdir, userid) {
   const prefspath = path.join(vaultdir, 'system', userid, 'preferences.yaml')
@@ -605,6 +635,10 @@ export function readuserpreferences(vaultdir, userid) {
 export function updateuserpreferences(vaultdir, userid, updates = {}) {
   const prefspath = path.join(vaultdir, 'system', userid, 'preferences.yaml')
   let existing = readuserpreferences(vaultdir, userid) || {}
+  if (Object.prototype.hasOwnProperty.call(updates, 'accent')) {
+    delete existing['user-color']
+    delete existing['accent-color']
+  }
   existing = { ...existing, ...updates }
   const yamlcontent = stringify(existing)
   markinternalwrite(prefspath, yamlcontent)
@@ -640,13 +674,11 @@ export function initsystemnotes(vaultdir, users = []) {
     const prefspath = path.join(userfolder, 'preferences.yaml')
     if (!fs.existsSync(prefspath)) {
       const displayname = user.name || (userid.charAt(0).toUpperCase() + userid.slice(1))
-      const isai = Boolean(user.bot || user.role === 'ai')
       const prefs = {
         name: displayname,
-        'user-color': isai ? '#10b981' : '#3b82f6',
+        accent: randomaccentcolor(),
         'bg-color': '#000000',
         'text-color': '#ededed',
-        'accent-color': '#ffffff',
         'reading-scale': 100
       }
       const yamlprefs = stringify(prefs)

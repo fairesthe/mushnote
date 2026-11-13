@@ -1,4 +1,4 @@
-import { api, applytheme } from './api.js'
+import { api, applytheme, resolveaccent } from './api.js'
 import { state } from './state.js'
 import { initfiles, loadnotes } from './files.js'
 import { initassistant, loadaiinfo } from './assistant.js'
@@ -33,6 +33,7 @@ async function boot() {
   if (res.user.avatar) {
     state.useravatarmap[state.currentuser.id] = res.user.avatar
   }
+  state.usercolormap[state.currentuser.id] = resolveaccent(res.user.preferences)
 
   if (loggedavatar) loggedavatar.src = res.user.avatar
   if (loggedname) loggedname.textContent = res.user.name
@@ -66,6 +67,10 @@ window.addEventListener('keydown', (e) => {
     const filectx = document.getElementById('file-context-menu')
     if (filectx && !filectx.classList.contains('hidden')) {
       filectx.classList.add('hidden')
+    }
+    const editorctx = document.getElementById('editor-context-menu')
+    if (editorctx && !editorctx.classList.contains('hidden')) {
+      editorctx.classList.add('hidden')
     }
   }
 })
