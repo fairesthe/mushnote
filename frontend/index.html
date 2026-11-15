@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>mushnote - login</title>
   <link rel="icon" type="image/png" href="/logo.png">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/auth.css">
+  <link rel="stylesheet" href="css/ui.css">
 </head>
 <body>
   <!-- auth container -------------------- -->
@@ -40,12 +42,12 @@
           <form id="password-form" class="auth-form">
             <div class="input-group">
               <label id="pwd-label" for="pwd-input">password</label>
-              <input type="password" id="pwd-input" autocomplete="current-password" required autofocus>
+              <input type="password" id="pwd-input" autocomplete="current-password" required autofocus spellcheck="false">
             </div>
 
             <div id="confirm-group" class="input-group hidden">
               <label for="pwd-confirm-input">confirm password</label>
-              <input type="password" id="pwd-confirm-input" autocomplete="new-password">
+              <input type="password" id="pwd-confirm-input" autocomplete="new-password" spellcheck="false">
             </div>
 
             <div id="error-message" class="error-text hidden"></div>
@@ -60,6 +62,6 @@
     </main>
   </div>
 
-  <script src="js/login.js" type="module"></script>
+  <script src="js/auth/login.js" type="module"></script>
 </body>
 </html>

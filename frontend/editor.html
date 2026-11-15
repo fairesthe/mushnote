@@ -5,7 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>mushnote</title>
   <link rel="icon" type="image/png" href="/logo.png">
-  <link rel="stylesheet" href="style.css">
+  <!-- order matters, later files win ties -------------------- -->
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/auth.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/tabs.css">
+  <link rel="stylesheet" href="css/code.css">
+  <link rel="stylesheet" href="css/history.css">
+  <link rel="stylesheet" href="css/files.css">
+  <link rel="stylesheet" href="css/editor.css">
+  <link rel="stylesheet" href="css/flash.css">
+  <link rel="stylesheet" href="css/ui.css">
+  <link rel="stylesheet" href="css/chat.css">
+  <link rel="stylesheet" href="css/viewers.css">
   <link rel="stylesheet" href="/vendor/katex/katex.min.css">
 </head>
 <body>
@@ -23,6 +35,11 @@
             <img id="logged-avatar" class="sidebar-avatar" src="" alt="avatar">
             <span id="logged-name" class="sidebar-user-name"></span>
           </div>
+        </div>
+
+        <div class="folder-quick-nav" id="folder-quick-nav">
+          <button type="button" id="btn-folder-home" class="folder-quick-btn" title="vault root">home</button>
+          <button type="button" id="btn-folder-media" class="folder-quick-btn" title="media folder">media</button>
         </div>
 
         <nav class="folder-nav" id="folder-nav-pane">
@@ -250,6 +267,13 @@
             <button type="button" class="toolbar-btn" data-action="undo" title="undo (ctrl+z)">↶</button>
             <button type="button" class="toolbar-btn" data-action="redo" title="redo (ctrl+y)">↷</button>
           </div>
+          <div class="toolbar-spacer"></div>
+          <button type="button" id="btn-editor-history" class="toolbar-btn toolbar-btn-history" title="revision history">history</button>
+        </div>
+
+        <div id="code-editor-toolbar" class="editor-toolbar code-editor-toolbar hidden">
+          <div class="toolbar-spacer"></div>
+          <button type="button" id="btn-code-editor-history" class="toolbar-btn toolbar-btn-history" title="revision history">history</button>
         </div>
 
         <!-- editor body -------------------- -->
@@ -264,12 +288,44 @@
             <div class="editor-backdrop" id="editor-backdrop" aria-hidden="true" style="display:none"></div>
             <textarea id="note-editor" class="note-textarea hidden" placeholder="start typing..." spellcheck="false"></textarea>
           </div>
+
+          <div id="history-preview-meta" class="history-preview-meta hidden" role="status"></div>
+
+          <div id="editor-cursors" class="editor-cursors hidden" aria-hidden="true">
+            <div id="editor-cursors-content" class="editor-cursors-content"></div>
+          </div>
+
+          <div id="history-viewer" class="history-viewer">
+            <div class="history-viewer-head">
+              <div class="history-viewer-head-left">
+                <span class="history-viewer-title">edit history</span>
+                <span id="history-deleted-badge" class="history-deleted-badge hidden">deleted on disk</span>
+              </div>
+              <div class="history-viewer-head-actions">
+                <div class="history-mode-toggle" role="group" aria-label="history grouping">
+                  <button type="button" class="history-mode-btn" data-mode="hourly">hourly</button>
+                  <button type="button" class="history-mode-btn" data-mode="all">all</button>
+                </div>
+                <button type="button" id="btn-history-restore" class="toolbar-btn history-restore-btn" disabled>restore</button>
+              </div>
+            </div>
+            <aside id="history-rev-list" class="history-rev-list"></aside>
+          </div>
         </div>
+      </div>
+
+      <div id="binary-file-toolbar" class="binary-file-toolbar hidden">
+        <button type="button" id="btn-file-download" class="toolbar-btn" title="download file">download</button>
       </div>
 
       <div id="image-viewer-container" class="image-viewer-container hidden">
         <div class="image-viewer-wrap">
           <img id="image-viewer-img" class="image-viewer-img" src="" alt="preview">
+          <div id="media-viewer-audio-wrap" class="media-viewer-audio-wrap hidden">
+            <img id="media-viewer-art" class="media-viewer-art hidden" alt="" src="">
+            <audio id="media-viewer-audio" class="media-viewer-audio" controls preload="metadata"></audio>
+          </div>
+          <video id="media-viewer-video" class="media-viewer-video hidden" controls preload="metadata"></video>
           <div id="image-viewer-meta" class="image-viewer-meta"></div>
         </div>
       </div>
@@ -298,11 +354,21 @@
       <header class="ai-header">
         <div class="ai-title-wrap">
           <img id="ai-drawer-avatar" class="ai-avatar-small" alt="ai">
-          <h3 id="ai-header-name" class="ai-name">assistant</h3>
+          <button type="button" id="btn-ai-conv-picker" class="ai-conv-picker" title="conversations">
+            <span id="ai-conv-title" class="ai-conv-title">new chat</span>
+            <svg class="ai-conv-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          <h3 id="ai-header-name" class="ai-name hidden">assistant</h3>
         </div>
         <button id="btn-close-ai" class="icon-btn" title="close">×</button>
       </header>
 
+      <div id="ai-panel-conversations" class="ai-panel-conversations hidden">
+        <button type="button" id="btn-ai-new-conversation" class="ai-conv-new-btn">+ new conversation</button>
+        <div id="ai-conversations-list" class="ai-conversations-list"></div>
+      </div>
+
+      <div id="ai-panel-chat" class="ai-panel-chat">
       <div id="ai-messages" class="ai-messages">
         <!-- messages populated dynamically -------------------- -->
       </div>
@@ -310,7 +376,7 @@
       <form id="ai-form" class="ai-input-wrap">
         <div id="ai-attachments-preview" class="ai-attachments-preview hidden"></div>
         <div class="ai-input-box">
-          <textarea id="ai-input" class="ai-input" rows="2" placeholder="ask assistant anything..." autocomplete="off"></textarea>
+          <textarea id="ai-input" class="ai-input" rows="2" placeholder="ask assistant anything..." autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off"></textarea>
           <div class="ai-input-bottom-bar">
             <button type="button" id="btn-ai-attach" class="btn-attach" title="attach file (images, pdf, sound, video)">
               <svg class="icon-plus-circle" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -324,6 +390,7 @@
           </div>
         </div>
       </form>
+      </div>
     </aside>
   </div>
 
@@ -361,23 +428,28 @@
     <div id="ctx-item-delete-folder" class="context-item text-danger"><img class="btn-icon-img" src="/resources/icons/files/delete.png" alt="delete"> delete folder...</div>
     <div id="ctx-item-media" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/folder.png" alt="media"> media...</div>
     <div id="ctx-item-system" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/folder.png" alt="system"> system...</div>
+    <div id="ctx-item-deleted" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/delete.png" alt="deleted"> deleted note history...</div>
   </div>
 
   <!-- editor selection context menu -------------------- -->
   <div id="editor-context-menu" class="context-menu hidden">
+    <div id="ctx-item-editor-cut" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="cut"> cut</div>
+    <div id="ctx-item-editor-copy" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="copy"> copy</div>
+    <div id="ctx-item-editor-paste" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="paste"> paste</div>
     <div id="ctx-item-ask-ai" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/text.png" alt="ask"> ask assistant</div>
   </div>
 
   <!-- custom right click context menu for assistant -------------------- -->
   <div id="ai-context-menu" class="context-menu hidden">
-    <div id="ctx-item-detailed-view" class="context-item context-item-checkbox">
-      <input type="checkbox" id="chk-detailed-view" class="menu-checkbox" tabindex="-1">
-      <span>detailed view</span>
-    </div>
     <div id="ctx-item-copy-chat" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/text.png" alt="copy"> copy conversation</div>
   </div>
 
-  <script src="js/main.js" type="module"></script>
+  <div id="ai-bubble-context-menu" class="context-menu hidden">
+    <div id="ctx-item-msg-copy" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/text.png" alt="copy"> copy message</div>
+    <div id="ctx-item-msg-reply" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/text.png" alt="reply"> reply</div>
+  </div>
+
+  <script src="js/core/main.js" type="module"></script>
 </body>
 </html>
 

@@ -1,0 +1,136 @@
+/* plain editor container and wrapper styles -------------------- */
+.plain-editor-wrap {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* codemirror 6 code editor styles -------------------- */
+.codemirror-editor {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #000000;
+}
+
+.codemirror-editor .cm-editor {
+  height: 100%;
+  outline: none;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+  font-size: calc(13.5px * var(--reading-scale, 1));
+  line-height: 1.6;
+  background-color: #000000;
+  color: #ededed;
+}
+
+.codemirror-editor .cm-scroller {
+  font-family: inherit;
+  overflow: auto;
+  padding: 8px 0;
+}
+
+.codemirror-editor .cm-gutters {
+  background-color: #000000;
+  border-right: 1px solid var(--border-color, #1a1a1a);
+  color: #555555;
+  padding: 0 4px;
+}
+
+.codemirror-editor .cm-activeLineGutter {
+  background-color: #0a0a0a;
+  color: #aaaaaa;
+}
+
+.codemirror-editor .cm-activeLine {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.codemirror-editor .cm-selectionBackground,
+.codemirror-editor.cm-focused .cm-selectionBackground,
+.codemirror-editor .cm-content ::selection {
+  background-color: var(--highlight-color, rgba(255, 255, 255, 0.35)) !important;
+}
+
+.tiptap-editor .ProseMirror ::selection {
+  background-color: var(--highlight-color, rgba(255, 255, 255, 0.35));
+}
+
+/* pinned editor selection while ai column has focus -------------------- */
+.editor-pinned-selection {
+  background-color: var(--highlight-color, rgba(255, 255, 255, 0.35));
+  border-radius: 2px;
+  box-decoration-break: clone;
+}
+
+.tiptap-editor.has-pinned-selection .ProseMirror:not(.ProseMirror-focused) .editor-pinned-selection {
+  background-color: var(--highlight-color, rgba(255, 255, 255, 0.35));
+}
+
+.codemirror-editor .editor-pinned-selection {
+  background-color: var(--highlight-color, rgba(255, 255, 255, 0.35)) !important;
+}
+
+.codemirror-editor .cm-cursor {
+  border-left-color: #ffffff;
+}
+
+/* edit flash avatars in codemirror float like the rich editor ones -------------------- */
+.cm-editor .edit-user-anchor {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 0;
+}
+
+.cm-editor .edit-user-badge {
+  width: 18px;
+  height: 18px;
+}
+
+.cm-editor .edit-user-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.cm-editor .edit-user-fallback {
+  font-size: 9px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1;
+}
+.editor-backdrop::-webkit-scrollbar {
+  display: none;
+}
+
+.editor-backdrop {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.editor-container.plain-mode .editor-toolbar {
+  display: none;
+}
+
+.editor-container.plain-mode .code-editor-toolbar {
+  display: flex;
+}
+
+.editor-container.plain-mode .editor-body {
+  height: calc(100vh - 40px);
+  overflow-y: hidden;
+}
+
+.toolbar-spacer {
+  flex: 1;
+  min-width: 12px;
+}
+
+.toolbar-btn-history {
+  flex-shrink: 0;
+}

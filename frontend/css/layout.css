@@ -1,0 +1,190 @@
+/* workspace two column layout -------------------- */
+.workspace-layout {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  background-color: var(--bg-color);
+  overflow: hidden;
+}
+
+/* left column sidebar -------------------- */
+.sidebar {
+  width: var(--sidebar-width);
+  min-width: 0;
+  max-width: 600px;
+  height: 100vh;
+  border-right: 1px solid var(--border-color);
+  background-color: var(--panel-overlay);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+  visibility: visible;
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s;
+}
+
+.sidebar.is-collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  border-right: none;
+  visibility: hidden;
+  pointer-events: none;
+  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 0.28s;
+}
+
+.sidebar.is-collapsed+#resizer-left {
+  display: none;
+}
+
+/* resizer splitter handles -------------------- */
+.column-resizer {
+  width: 0;
+  cursor: col-resize;
+  background-color: transparent;
+  user-select: none;
+  z-index: 20;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.column-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+  z-index: 25;
+}
+
+.column-resizer:hover::after,
+.column-resizer.is-dragging::after {
+  background-color: #333333;
+}
+
+#resizer-right:has(+ #ai-drawer.is-collapsed) {
+  display: none;
+}
+
+/* disabling animations while dragging resizers keeps things instant and snappy -------------------- */
+body.is-resizing,
+body.is-resizing * {
+  user-select: none !important;
+  cursor: col-resize !important;
+}
+
+body.is-resizing .sidebar,
+body.is-resizing .ai-drawer,
+body.is-resizing .editor-pane,
+body.is-resizing .floating-side-tab {
+  transition: none !important;
+}
+
+/* center editor pane -------------------- */
+.editor-pane {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: relative;
+  z-index: 50;
+  overflow: visible !important;
+  background-color: var(--bg-color);
+}
+
+/* floating side tab toggles with square arrows -------------------- */
+.floating-side-tab {
+  position: absolute;
+  top: 7px;
+  z-index: 1000;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  background-color: var(--panel-overlay);
+  color: #777777;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 0;
+  cursor: pointer;
+  user-select: none;
+  transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1), right 0.28s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.floating-side-tab:hover {
+  background-color: #1c1c1c;
+  border-color: #555555;
+  color: #ededed;
+  transform: scale(1.08);
+}
+
+.floating-side-tab svg {
+  display: block;
+  pointer-events: none;
+}
+
+.floating-side-tab.tab-left {
+  left: 8px;
+}
+
+.floating-side-tab.tab-left.panel-open {
+  left: -12px;
+}
+
+.floating-side-tab.tab-left.panel-closed {
+  left: 8px;
+}
+
+.floating-side-tab.tab-right {
+  right: 8px;
+}
+
+.floating-side-tab.tab-right.panel-open {
+  right: -12px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  border-radius: 4px;
+}
+
+.floating-side-tab.tab-right.panel-closed {
+  right: 10px;
+  width: auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px 0 5px;
+  border-radius: 14px;
+  gap: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-toggle-ai-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: block;
+}
+
+.tab-toggle-ai-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #cccccc;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.floating-side-tab.tab-right.panel-closed:hover .tab-toggle-ai-name {
+  color: #ffffff;
+}

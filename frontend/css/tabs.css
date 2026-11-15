@@ -1,0 +1,173 @@
+/* draggable browser style tab bar -------------------- */
+.editor-tabs-bar {
+  display: flex;
+  align-items: center;
+  height: var(--workspace-chrome-height);
+  min-height: var(--workspace-chrome-height);
+  background-color: var(--panel-overlay);
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 110px 0 36px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  user-select: none;
+  scrollbar-width: none;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.editor-tabs-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs-track {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 100%;
+  position: relative;
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 6px 6px 0 0;
+  background-color: rgba(0, 0, 0, 0.35);
+  border: 1px solid #1a1a1a;
+  border-bottom: none;
+  color: #888888;
+  font-size: 13.5px;
+  font-family: monospace;
+  cursor: pointer;
+  max-width: 190px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+  touch-action: none;
+  will-change: transform;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.editor-tab:hover {
+  background-color: rgba(0, 0, 0, 0.45);
+  color: var(--text-color);
+}
+
+.editor-tab.active {
+  background-color: rgba(0, 0, 0, 0.62);
+  color: var(--accent-color);
+  border-color: #262626;
+  font-weight: 500;
+}
+
+.editor-tab.is-dragging {
+  position: relative;
+  z-index: 50 !important;
+  background-color: #161616;
+  border-color: #383838;
+  cursor: grabbing !important;
+  opacity: 1 !important;
+  transition: none !important;
+}
+
+body.is-dragging-tab,
+body.is-dragging-tab * {
+  user-select: none !important;
+  cursor: grabbing !important;
+}
+
+.tab-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-grow: 1;
+}
+
+.tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  color: #666666;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.tab-close:hover {
+  background-color: #222222;
+  color: #ffffff;
+}
+
+.editor-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 40px);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.editor-body {
+  flex-grow: 1;
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.editor-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 24px 28px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+  font-size: calc(14px * var(--reading-scale, 1));
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  color: transparent;
+  pointer-events: none;
+  user-select: none;
+}
+
+.note-textarea {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  background-color: transparent;
+  color: var(--text-color);
+  border: none;
+  outline: none;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+  font-size: calc(14px * var(--reading-scale, 1));
+  line-height: 1.65;
+  padding: 24px 28px;
+  resize: none;
+  tab-size: 2;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
+
+.note-textarea::selection {
+  background-color: var(--highlight-color, rgba(255, 255, 255, 0.35));
+}

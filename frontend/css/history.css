@@ -1,0 +1,325 @@
+/* note revision history viewer -------------------- */
+.editor-body.history-mode {
+  overflow: hidden;
+}
+
+.editor-body.history-mode .tiptap-editor,
+.editor-body.history-mode .plain-editor-wrap {
+  margin-right: min(34vw, 320px);
+  transition: margin-right 0.25s ease;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.editor-body.history-mode .tiptap-editor {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.editor-body.history-mode .plain-editor-wrap {
+  overflow: hidden;
+}
+
+.editor-body.history-mode #btn-view-page {
+  display: none;
+}
+
+.history-viewer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: min(34vw, 320px);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-overlay);
+  border-left: 1px solid var(--border-color);
+  z-index: 12;
+  overflow: hidden;
+  transform: translateX(100%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.25s ease, visibility 0.25s ease;
+}
+
+.editor-body.history-mode .history-viewer {
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.history-viewer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.history-viewer-head-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.history-viewer-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+.history-deleted-badge {
+  font-size: 11px;
+  color: #f59e0b;
+}
+
+.history-deleted-badge.hidden {
+  display: none;
+}
+
+.history-viewer-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.history-rev-list {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.history-rev-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.history-rev-item:hover {
+  background: color-mix(in srgb, var(--text-color) 6%, transparent);
+}
+
+.history-rev-item.active {
+  background: color-mix(in srgb, var(--accent-color) 18%, #000);
+}
+
+.history-rev-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 2px solid var(--border-color);
+}
+
+.history-rev-body {
+  min-width: 0;
+  flex: 1;
+}
+
+/* hourly or all switch -------------------- */
+.history-mode-toggle {
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.history-mode-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted-color);
+  font-size: 11.5px;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+
+.history-mode-btn + .history-mode-btn {
+  border-left: 1px solid var(--border-color);
+}
+
+.history-mode-btn.active {
+  background: color-mix(in srgb, var(--accent-color) 20%, transparent);
+  color: var(--text-color);
+}
+
+/* overlapping faces for hourly groups -------------------- */
+.history-avatar-stack {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.history-avatar-stack .history-rev-avatar + .history-rev-avatar,
+.history-avatar-stack .history-avatar-more {
+  margin-left: -8px;
+}
+
+.history-avatar-more {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 11px;
+  border: 2px solid var(--border-color);
+  background: color-mix(in srgb, var(--text-color) 14%, #111);
+  color: var(--text-color);
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.history-rev-meta {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--text-color) 85%, #888);
+}
+
+.history-rev-author {
+  color: var(--text-color);
+  font-weight: 600;
+}
+
+.history-rev-stat {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--text-color) 75%, #888);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.history-stat-add {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.history-stat-del {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.history-stat-lines {
+  color: color-mix(in srgb, var(--text-color) 55%, #666);
+}
+
+.history-rev-preview {
+  margin-top: 4px;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--text-color) 55%, #666);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-rev-event {
+  border-left: 3px solid #f59e0b;
+}
+
+.history-preview-meta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 13;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  text-align: right;
+  min-height: 40px;
+  padding: 10px 16px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--text-color);
+  background: color-mix(in srgb, var(--panel-overlay) 94%, #000);
+  border-top: 1px solid var(--border-color);
+  transform: translateY(100%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s ease,
+    visibility 0.28s;
+}
+
+.editor-body.history-mode .history-preview-meta {
+  right: min(34vw, 320px);
+}
+
+.history-preview-meta:not(.hidden) {
+  transform: translateY(0);
+  opacity: 1;
+  visibility: visible;
+}
+
+.history-preview-meta.hidden {
+  transform: translateY(100%);
+  opacity: 0;
+  visibility: hidden;
+}
+
+.tiptap-editor.history-preview-lock .ProseMirror,
+.plain-editor-wrap.history-preview-lock,
+.codemirror-editor.history-preview-lock {
+  cursor: default;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-logo {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.settings-top-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  background-color: #1a1a1a;
+}
+
+.sidebar-user-name {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--accent-color);
+}

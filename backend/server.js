@@ -3,14 +3,26 @@ import path from 'node:path'
 import fs from 'node:fs'
 import express from 'express'
 import { WebSocketServer } from 'ws'
-import { loadconfig, saveconfig, getvaultpath, gethistorypath, getrootdir } from './config.js'
-import { initvault, getnotepath, listnotes, listfolders, readnote, deletenote, movenoteorfolder, createfolder, deletefolder, copynoteorfolder, getuniqueconflictpath, initsystemnotes, readuserpreferences, updateuserpreferences, normalizepreferences } from './vault.js'
-import { inithistory, gethistory, getevents, getnoteauthorship } from './history.js'
-import { getdoc, getdocifloaded, applydiff, handlesocket, migratedocentry } from './sync.js'
-import { verifypassword, setuserauth, createsession, getsession, extracttoken, formatavatarurl } from './auth.js'
-import { runagentchat } from './agent.js'
-import { initvaultwatcher } from './watcher.js'
-import { log, printbanner, requestlogger } from './logger.js'
+import { loadconfig, saveconfig, getvaultpath, gethistorypath, getrootdir } from './core/config.js'
+import { initvault, getnotepath, listnotes, listfolders, readnote, deletenote, movenoteorfolder, createfolder, deletefolder, copynoteorfolder, getuniqueconflictpath, initsystemnotes, readuserpreferences, updateuserpreferences, normalizepreferences, audiofilepattern } from './vault/vault.js'
+import { extractaudiocover } from './vault/audiocover.js'
+import { inithistory, getrevisionbyid, getfiletimeline, getevents, getnoteauthorship, getdeletednotes, gethourlytimeline } from './vault/history.js'
+import { getdoc, getdocifloaded, applydiff, restorenoterevision, handlesocket, migratedocentry } from './sync/sync.js'
+import { verifypassword, setuserauth, createsession, getsession, extracttoken, formatavatarurl } from './auth/auth.js'
+import { runagentchat } from './agent/agent.js'
+import { generateconversationtitle } from './agent/conversationtitle.js'
+import {
+  listconversations,
+  readconversation,
+  createconversation,
+  saveconversation,
+  deleteconversation,
+  conversationvaultpath,
+  sanitizeconversationid,
+} from './vault/conversations.js'
+import { initvaultwatcher } from './vault/watcher.js'
+import { log, printbanner, requestlogger } from './core/logger.js'
+import { registerv1routes } from './api/v1routes.js'
 
 // configuration and initialization --------------------
 const config = loadconfig()
@@ -113,6 +125,13 @@ function checksystemaccess(noteid, session) {
   const folderuser = parts[1]
   return Boolean(session?.user_id && folderuser === session.user_id)
 }
+
+registerv1routes(app, {
+  vaultdir,
+  historydir,
+  checksystemaccess,
+  readuserpreferences,
+})
 
 // auth routes --------------------
 app.get('/api/auth/users', (req, res) => {
@@ -243,10 +262,7 @@ app.get('/api/auth/me', (req, res) => {
 })
 
 app.post('/api/auth/logout', (req, res) => {
-  res.setHeader('Set-Cookie', [
-    'mushnote_session=; Path=/; HttpOnly; Max-Age=0',
-    'gillium_session=; Path=/; HttpOnly; Max-Age=0'
-  ])
+  res.setHeader('Set-Cookie', 'mushnote_session=; Path=/; HttpOnly; Max-Age=0')
   res.json({ status: 'ok' })
 })
 
@@ -515,6 +531,37 @@ app.get('/api/raw', (req, res) => {
   res.sendFile(filepath)
 })
 
+// embedded cover art from audio file tags --------------------
+app.get('/api/media/cover', async (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  const noteid = req.query.id
+  if (!noteid) {
+    return res.status(400).json({ error: 'id query parameter required' })
+  }
+  if (!checksystemaccess(noteid, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
+  const filepath = getnotepath(vaultdir, noteid)
+  if (!fs.existsSync(filepath)) {
+    return res.status(404).json({ error: 'file not found' })
+  }
+  const basename = path.basename(filepath).toLowerCase()
+  if (!audiofilepattern.test(basename)) {
+    return res.status(404).json({ error: 'no cover for this file type' })
+  }
+
+  const cover = await extractaudiocover(filepath)
+  if (!cover) {
+    return res.status(404).json({ error: 'no embedded cover art' })
+  }
+
+  res.setHeader('content-type', cover.mimetype)
+  res.setHeader('cache-control', 'public, max-age=300')
+  res.send(cover.data)
+})
+
 // legacy single segment read --------------------
 app.get('/api/notes/:id', (req, res) => {
   const token = extracttoken(req)
@@ -543,7 +590,8 @@ app.get('/api/notes/:id', (req, res) => {
 app.post('/api/notes', (req, res) => {
   const token = extracttoken(req)
   const session = getsession(token)
-  const { note_id, title = '', content = '', author = 'wyatt', create_unique = false } = req.body
+  const { note_id, title = '', content = '', create_unique = false } = req.body
+  const author = session?.user_id || req.body?.author || 'unknown'
   if (!note_id) {
     return res.status(400).json({ error: 'note_id is required' })
   }
@@ -559,15 +607,18 @@ app.post('/api/notes', (req, res) => {
     : content
 
   const entry = getdoc(vaultdir, historydir, targetid)
-  if (entry.ytext.toString() === initialcontent) {
+  const currentbody = entry.getcontent()
+  if (currentbody === initialcontent) {
     return res.json({ status: 'ok', note_id: targetid })
   }
+  if (currentbody.trim().length > 80 && !String(initialcontent || '').trim()) {
+    return res.status(409).json({ error: 'refusing empty overwrite' })
+  }
+  if (currentbody.trim().length > 400 && String(initialcontent || '').trim().length < 40) {
+    return res.status(409).json({ error: 'refusing collapsed overwrite' })
+  }
 
-  entry.doc.transact(() => {
-    entry.ytext.delete(0, entry.ytext.length)
-    entry.ytext.insert(0, initialcontent)
-  }, author)
-
+  entry.setcontent(initialcontent, author)
   entry.flushtodisk(author)
   log.note('save', targetid, `by ${author} (${initialcontent.length} chars)`)
   res.status(201).json({ status: 'created', note_id: targetid })
@@ -625,28 +676,86 @@ app.post('/api/notes/:id/diff', async (req, res) => {
   }
 })
 
-// get per user note edit history supporting nested paths --------------------
+// every history route needs a logged in session --------------------
+app.use('/api/history', (req, res, next) => {
+  const session = getsession(extracttoken(req))
+  if (!session) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+  req.session = session
+  next()
+})
+
+// timeline of revisions and events, hourly groups or every save --------------------
 app.get('/api/history', (req, res) => {
   const noteid = req.query.id
-  const limit = parseInt(req.query.limit || '5', 10)
   if (!noteid) {
     return res.status(400).json({ error: 'id query parameter required' })
   }
-  const history = gethistory(historydir, noteid, limit)
-  res.json({ history })
+  if (!checksystemaccess(noteid, req.session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
+  const limit = parseInt(req.query.limit || '80', 10)
+  const tzoffset = parseInt(req.query.tz || '0', 10) || 0
+  res.json({
+    timeline: req.query.hourly === '1'
+      ? gethourlytimeline(historydir, noteid, limit, tzoffset)
+      : getfiletimeline(historydir, noteid, limit),
+    note_missing: !readnote(vaultdir, noteid)
+  })
 })
 
-app.get('/api/notes/:id/history', (req, res) => {
-  const limit = parseInt(req.query.limit || '5', 10)
-  const history = gethistory(historydir, req.params.id, limit)
-  res.json({ history })
+// notes with history whose file is gone from the vault --------------------
+app.get('/api/history/deleted', (req, res) => {
+  const existing = listnotes(vaultdir).map(note => note.note_id)
+  // chat logs churn constantly and arent notes anyway
+  const notes = getdeletednotes(historydir, existing)
+    .filter(note => checksystemaccess(note.note_id, req.session))
+    .filter(note => !/^system\/[^/]+\/conversations\//.test(note.note_id))
+  res.json({ notes })
 })
 
-// read audit events log across vault or for a specific file --------------------
+app.get('/api/history/revision/:revid', (req, res) => {
+  const rev = getrevisionbyid(historydir, req.params.revid)
+  if (!rev) {
+    return res.status(404).json({ error: 'revision not found' })
+  }
+  if (!checksystemaccess(rev.file_id, req.session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  res.json({ revision: rev })
+})
+
+app.post('/api/history/restore', (req, res) => {
+  const noteid = req.body?.note_id || req.body?.id
+  const revid = req.body?.revision_id
+  if (!noteid || !revid) {
+    return res.status(400).json({ error: 'note_id and revision_id required' })
+  }
+  if (!checksystemaccess(noteid, req.session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+
+  try {
+    const author = req.session.user_id || 'user'
+    const result = restorenoterevision(vaultdir, historydir, noteid, revid, author)
+    log.note('restore', noteid, `rev ${revid} by ${author}`)
+    res.json({ status: 'ok', ...result })
+  } catch (err) {
+    res.status(400).json({ error: err.message })
+  }
+})
+
+// audit events for one file, or the whole vault minus system paths the user cant see --------------------
 app.get('/api/history/events', (req, res) => {
   const fileid = req.query.id || null
-  const limit = parseInt(req.query.limit || '50', 10)
+  if (fileid && !checksystemaccess(fileid, req.session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const limit = Math.min(parseInt(req.query.limit || '50', 10) || 50, 500)
   const events = getevents(historydir, fileid, limit)
+    .filter(ev => [ev.file_id, ev.old_path, ev.new_path].every(p => !p || checksystemaccess(p, req.session)))
   res.json({ events })
 })
 
@@ -771,6 +880,111 @@ app.post('/api/note/copy', (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message })
   }
+})
+
+// per-user ai conversations under system/<user>/conversations --------------------
+function requiresession(req, res) {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!session?.user_id) {
+    res.status(401).json({ error: 'not authenticated' })
+    return null
+  }
+  return session
+}
+
+app.get('/api/conversations', (req, res) => {
+  const session = requiresession(req, res)
+  if (!session) return
+  const items = listconversations(vaultdir, session.user_id)
+  res.json({ conversations: items })
+})
+
+app.post('/api/conversations', (req, res) => {
+  const session = requiresession(req, res)
+  if (!session) return
+  const title = String(req.body?.title || 'new chat').trim() || 'new chat'
+  const record = createconversation(vaultdir, session.user_id, { title })
+  log.agent('conversation', 'create', `${session.user_id} ${record.id}`)
+  res.status(201).json({ conversation: record })
+})
+
+app.get('/api/conversations/:id', (req, res) => {
+  const session = requiresession(req, res)
+  if (!session) return
+  const id = sanitizeconversationid(req.params.id)
+  if (!id) return res.status(400).json({ error: 'invalid id' })
+  const vaultpath = conversationvaultpath(session.user_id, id)
+  if (!checksystemaccess(vaultpath, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const record = readconversation(vaultdir, session.user_id, id)
+  if (!record) return res.status(404).json({ error: 'conversation not found' })
+  res.json({ conversation: record })
+})
+
+app.put('/api/conversations/:id', (req, res) => {
+  const session = requiresession(req, res)
+  if (!session) return
+  const id = sanitizeconversationid(req.params.id)
+  if (!id) return res.status(400).json({ error: 'invalid id' })
+  const vaultpath = conversationvaultpath(session.user_id, id)
+  if (!checksystemaccess(vaultpath, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const patch = {}
+  if (req.body?.title !== undefined) patch.title = String(req.body.title || '').trim() || 'new chat'
+  if (req.body?.title_generated !== undefined) patch.title_generated = Boolean(req.body.title_generated)
+  if (req.body?.gemini_history !== undefined) patch.gemini_history = req.body.gemini_history
+  if (req.body?.display_log !== undefined) patch.display_log = req.body.display_log
+  if (req.body?.model !== undefined) patch.model = req.body.model
+  if (req.body?.last_system_prompt_meta !== undefined) {
+    patch.last_system_prompt_meta = req.body.last_system_prompt_meta
+  }
+  try {
+    const record = saveconversation(vaultdir, session.user_id, id, patch)
+    res.json({ conversation: record })
+  } catch (err) {
+    res.status(400).json({ error: err.message || String(err) })
+  }
+})
+
+app.delete('/api/conversations/:id', (req, res) => {
+  const session = requiresession(req, res)
+  if (!session) return
+  const id = sanitizeconversationid(req.params.id)
+  if (!id) return res.status(400).json({ error: 'invalid id' })
+  const vaultpath = conversationvaultpath(session.user_id, id)
+  if (!checksystemaccess(vaultpath, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const ok = deleteconversation(vaultdir, session.user_id, id)
+  if (!ok) return res.status(404).json({ error: 'conversation not found' })
+  log.agent('conversation', 'delete', `${session.user_id} ${id}`)
+  res.json({ status: 'deleted', id })
+})
+
+app.post('/api/conversations/:id/title', async (req, res) => {
+  const session = requiresession(req, res)
+  if (!session) return
+  const id = sanitizeconversationid(req.params.id)
+  if (!id) return res.status(400).json({ error: 'invalid id' })
+  const vaultpath = conversationvaultpath(session.user_id, id)
+  if (!checksystemaccess(vaultpath, session)) {
+    return res.status(403).json({ error: 'forbidden' })
+  }
+  const record = readconversation(vaultdir, session.user_id, id)
+  if (!record) return res.status(404).json({ error: 'conversation not found' })
+  const firstmessage =
+    String(req.body?.first_message || '').trim() ||
+    record.display_log?.find((e) => e.role === 'user')?.prompt ||
+    ''
+  const title = await generateconversationtitle(firstmessage)
+  const updated = saveconversation(vaultdir, session.user_id, id, {
+    title,
+    title_generated: true,
+  })
+  res.json({ conversation: updated, title })
 })
 
 // gemini agent chat endpoint --------------------
@@ -967,7 +1181,10 @@ app.post('/api/agent/chat', async (req, res) => {
       }
     } catch {
       const lower = cleanmessage.toLowerCase()
-      if (lower.includes('503') || lower.includes('unavailable') || lower.includes('overloaded')) {
+      if (lower.includes('error in input stream')) {
+        cleanmessage = 'one second...'
+        errortype = 'soft'
+      } else if (lower.includes('503') || lower.includes('unavailable') || lower.includes('overloaded')) {
         cleanmessage = 'one second...'
         errortype = 'soft'
       } else if (lower.includes('429') || lower.includes('resource_exhausted')) {

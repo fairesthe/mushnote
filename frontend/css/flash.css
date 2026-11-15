@@ -1,0 +1,332 @@
+/* user markdown highlight in accent color with 35% opacity -------------------- */
+.tiptap-editor mark,
+mark {
+  background-color: var(--highlight-color, rgba(255, 255, 255, 0.35));
+  color: inherit;
+  padding: 0;
+  border-radius: 1px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* user edit flash highlight -------------------- */
+/* just a background tint, no border or outline so the text never moves */
+.edit-flash,
+.tiptap-editor .ProseMirror .edit-flash,
+.cm-editor .edit-flash {
+  border-radius: 3px;
+  background-color: var(--flash-user-bg, rgba(59, 130, 246, 0.28));
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  animation: textflashfade 2.2s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+
+/* flash and selection get merged onto one span so fade back to the selection instead of eating it */
+.remote-user-selection.edit-flash,
+.tiptap-editor .ProseMirror .remote-user-selection.edit-flash {
+  animation-name: selflashfade;
+}
+
+/* revision history: keep diff marks visible, no fade animation -------------------- */
+.editor-body.history-mode .edit-flash,
+.editor-body.history-mode .tiptap-editor .ProseMirror .edit-flash,
+.editor-body.history-mode .cm-editor .edit-flash {
+  animation: none !important;
+  background-color: var(--flash-user-bg, rgba(59, 130, 246, 0.28));
+}
+
+.editor-body.history-mode .edit-delete-marker,
+.editor-body.history-mode .tiptap-editor .ProseMirror .edit-delete-marker {
+  animation: none !important;
+  opacity: 1;
+}
+
+.editor-body.history-mode .edit-user-badge,
+.editor-body.history-mode .edit-user-anchor .edit-user-badge {
+  animation: none !important;
+  opacity: 1;
+}
+
+/* fade out the tint without touching text opacity -------------------- */
+@keyframes textflashfade {
+  0%,
+  25% {
+    background-color: var(--flash-user-bg, rgba(59, 130, 246, 0.28));
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* starts brighter than the selection or you cant tell the flash is even there */
+@keyframes selflashfade {
+  0%,
+  25% {
+    background-color: var(--flash-user-strong, rgba(59, 130, 246, 0.55));
+  }
+
+  100% {
+    background-color: var(--remote-selection-bg, rgba(59, 130, 246, 0.32));
+  }
+}
+
+/* deletion marker is a zero width bar so the line never jumps when it fades -------------------- */
+.edit-delete-marker,
+.tiptap-editor .ProseMirror .edit-delete-marker,
+.cm-editor .edit-delete-marker {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 1em;
+  margin: 0;
+  padding: 0;
+  vertical-align: text-bottom;
+  background: none;
+  outline: none;
+  pointer-events: none;
+  user-select: none;
+  animation: deleteflashfade 2.2s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+
+.edit-delete-marker::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 1px;
+  background-color: var(--flash-user-border, rgba(59, 130, 246, 0.75));
+}
+
+.edit-delete-text {
+  display: none;
+}
+
+/* fade out deletion marker -------------------- */
+@keyframes deleteflashfade {
+  0%,
+  25% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+/* fade out avatar badge and deletion marker -------------------- */
+@keyframes badgefade {
+  0% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+
+  25% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+/* user edit avatar badge on bottom right corner -------------------- */
+.edit-user-anchor {
+  display: inline-block;
+  position: relative;
+  width: 0;
+  height: 0;
+  line-height: 0;
+  vertical-align: baseline;
+  pointer-events: none;
+  user-select: none;
+}
+
+.edit-user-badge {
+  position: absolute;
+  left: 3px;
+  top: -2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: #000000;
+  border: 1.5px solid var(--flash-user-border, #3b82f6);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  z-index: 10;
+  animation: badgefade 2.2s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+
+.edit-user-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.edit-user-fallback {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--flash-user-border, #3b82f6);
+  line-height: 22px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* live user cursors on note -------------------- */
+.editor-cursors {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  z-index: 3;
+}
+
+.editor-cursors-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.live-cursor {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+  transition: left 0.08s ease-out, top 0.08s ease-out;
+  z-index: 10;
+}
+
+.live-cursor-caret {
+  width: 2px;
+  height: var(--cursor-height, 20px);
+  background-color: var(--cursor-color, #3b82f6);
+  border-radius: 1px;
+  animation: cursorpulse 1.5s ease-in-out infinite;
+}
+
+.live-cursor-badge {
+  position: absolute;
+  left: 4px;
+  top: calc(var(--cursor-height, 20px) - 6px);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: #000000;
+  border: 1.5px solid var(--cursor-color, #3b82f6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.live-cursor-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.live-cursor-initial {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--cursor-color, #3b82f6);
+  line-height: 22px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* the edit flash avatar stands in for the cursor badge while it shows -------------------- */
+/* stays hidden until the delay runs out then fades in right as the flash avatar is gone */
+.live-cursor.is-flashing .live-cursor-badge {
+  animation: badgereturn 0.5s ease-out both;
+  animation-delay: var(--badge-return-delay, 0ms);
+}
+
+@keyframes badgereturn {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* edit flash avatar and delete bar floating over the text, never inside it -------------------- */
+.live-flash-mark {
+  position: absolute;
+  width: 0;
+  height: var(--cursor-height, 20px);
+  pointer-events: none;
+  user-select: none;
+  z-index: 9;
+}
+
+.live-flash-mark .edit-user-anchor {
+  position: absolute;
+  left: 1px;
+  top: calc(var(--cursor-height, 20px) - 4px);
+}
+
+.live-flash-mark .edit-user-badge {
+  animation-delay: var(--flash-delay, 0ms);
+}
+
+.live-flash-bar {
+  position: absolute;
+  left: -1px;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  border-radius: 1px;
+  background-color: var(--flash-user-border, rgba(59, 130, 246, 0.85));
+  animation: deleteflashfade 2.2s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+  animation-delay: var(--flash-delay, 0ms);
+}
+
+/* remote peer text selection in editor -------------------- */
+.remote-user-selection {
+  background-color: var(--remote-selection-bg, rgba(59, 130, 246, 0.32));
+  border-radius: 2px;
+}
+
+.tiptap-editor .remote-user-selection {
+  box-decoration-break: clone;
+}
+
+.codemirror-editor .remote-user-selection {
+  border-radius: 2px;
+}
+
+@keyframes cursorpulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
