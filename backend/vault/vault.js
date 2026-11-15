@@ -61,15 +61,19 @@ export const textfilepattern = /\.(md|markdown|txt|json|yaml|yml|csv|tsv|xml|htm
 export const imagefilepattern = /\.(png|jpg|jpeg|gif|webp|svg|ico|bmp)$/i
 export const audiofilepattern = /\.(mp3|m4a|wav|ogg|aac|flac)$/i
 export const videofilepattern = /\.(mp4|webm|mov|mkv|avi)$/i
-export const mediafilepattern = /\.(mp3|m4a|wav|ogg|aac|flac|mp4|webm|mov|mkv|avi)$/i
-export const supportedfilepattern = /\.(md|markdown|txt|json|yaml|yml|csv|tsv|xml|html|htm|php|css|js|ts|py|sh|log|toml|ini|conf|env|png|jpg|jpeg|gif|webp|svg|ico|bmp|mp3|m4a|wav|ogg|aac|flac|mp4|webm|mov|mkv|avi)$/i
+export const mediafilepattern = /\.(mp3|m4a|wav|ogg|aac|flac|mp4|webm|mov|mkv|avi|pdf)$/i
+// kept for callers that still filter "known" types -- listnotes now includes every file --------------------
+export const supportedfilepattern = /\.(md|markdown|txt|json|yaml|yml|csv|tsv|xml|html|htm|php|css|js|ts|py|sh|log|toml|ini|conf|env|png|jpg|jpeg|gif|webp|svg|ico|bmp|mp3|m4a|wav|ogg|aac|flac|mp4|webm|mov|mkv|avi|pdf|zip|jar|7z|rar)$/i
 
 export function mediakindfromname(filename) {
   const lower = String(filename || '').toLowerCase()
   if (imagefilepattern.test(lower)) return 'image'
   if (audiofilepattern.test(lower)) return 'audio'
   if (videofilepattern.test(lower)) return 'video'
-  return null
+  if (/\.pdf$/i.test(lower)) return 'pdf'
+  // text notes stay editable, everything else is a binary file tab --------------------
+  if (textfilepattern.test(lower)) return null
+  return 'file'
 }
 
 // tracking internal disk operations so watcher skips them --------------------
@@ -131,7 +135,7 @@ export function listnotes(vaultdir) {
       if (entry.isDirectory()) {
         const nextprefix = relprefix ? `${relprefix}/${entry.name}` : entry.name
         walk(fullpath, nextprefix)
-      } else if (supportedfilepattern.test(entry.name)) {
+      } else if (entry.isFile()) {
         const relid = relprefix
           ? `${relprefix}/${entry.name}`
           : entry.name
@@ -139,10 +143,13 @@ export function listnotes(vaultdir) {
         const mediakind = mediakindfromname(entry.name)
         const isimage = mediakind === 'image'
         let title = entry.name
-        let snippet = '[image]'
+        let snippet = '[file]'
 
+        if (mediakind === 'image') snippet = '[image]'
         if (mediakind === 'audio') snippet = '[audio]'
         if (mediakind === 'video') snippet = '[video]'
+        if (mediakind === 'pdf') snippet = '[pdf]'
+        if (mediakind === 'file') snippet = '[file]'
         if (!mediakind) {
           try {
             const content = fs.readFileSync(fullpath, 'utf8')
@@ -704,6 +711,12 @@ export function initsystemnotes(vaultdir, users = []) {
         : '# personality and details\n\n## details\n- \n\n## preferences\n- \n'
       markinternalwrite(personalitypath, template)
       fs.writeFileSync(personalitypath, template, 'utf8')
+    }
+
+    // jobs folder for scheduled agent runs --------------------
+    const jobsfolder = path.join(userfolder, 'jobs')
+    if (!fs.existsSync(jobsfolder)) {
+      fs.mkdirSync(jobsfolder, { recursive: true })
     }
   }
 }

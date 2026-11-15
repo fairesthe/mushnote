@@ -22,8 +22,9 @@
   overflow: hidden;
 }
 
-.editor-body.history-mode #btn-view-page {
-  display: none;
+/* float is absolute so margin on the wrap doesnt move it -------------------- */
+.editor-body.history-mode .code-editor-float {
+  right: calc(12px + min(34vw, 320px));
 }
 
 .history-viewer {
@@ -298,16 +299,22 @@
   object-fit: contain;
 }
 
-.settings-top-left {
-  display: flex;
+.sidebar-user {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  max-width: min(180px, 48%);
+  padding: 4px 6px 4px 2px;
+  border: none;
+  background: transparent;
+  color: var(--accent-color);
+  cursor: pointer;
+  border-radius: 6px;
+  text-align: left;
 }
 
-.sidebar-user {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.sidebar-user:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .sidebar-avatar {
@@ -316,10 +323,25 @@
   border-radius: 50%;
   object-fit: cover;
   background-color: #1a1a1a;
+  flex-shrink: 0;
 }
 
 .sidebar-user-name {
   font-size: 15.5px;
   font-weight: 600;
   color: var(--accent-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.sidebar-user-chevron {
+  flex-shrink: 0;
+  opacity: 0.75;
+  transition: transform 0.15s ease;
+}
+
+.sidebar.settings-open .sidebar-user-chevron {
+  transform: rotate(180deg);
 }

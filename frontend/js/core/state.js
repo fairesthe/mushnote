@@ -3,6 +3,7 @@ export const state = {
   currentuser: null,
   activenoteid: null,
   opentabs: [],
+  tabslothistories: [],
   currentfolder: '',
   allnotes: [],
   allfolders: [],

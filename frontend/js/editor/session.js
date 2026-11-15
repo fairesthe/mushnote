@@ -96,10 +96,14 @@ export function getspotseen(noteid) {
 // save workspace tab state to local storage --------------------
 export function saveworkspacestate() {
   const userid = state.currentuser?.id || 'guest'
+  const histories = Array.isArray(state.tabslothistories)
+    ? state.tabslothistories.map((stack) => (Array.isArray(stack) ? [...stack] : []))
+    : []
   const ws = {
     opentabs: state.opentabs,
     activenoteid: state.activenoteid,
-    currentfolder: state.currentfolder
+    currentfolder: state.currentfolder,
+    tabslothistories: histories
   }
   try {
     localStorage.setItem(`mushnote_ws_${userid}`, JSON.stringify(ws))

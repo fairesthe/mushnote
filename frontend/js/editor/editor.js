@@ -1,15 +1,14 @@
 import { api } from '../core/api.js'
 import { state } from '../core/state.js'
-import { rendertabs } from '../sidebar/tabs.js'
-import { renderfolderview, updateactivefilerow } from '../sidebar/files.js'
-import { renderpreview, hidepreview, updateviewpagebutton } from '../app/preview.js'
-import { cleanmarkdown } from './tiptap.bundle.js'
+import { rendertabs, pushtabhistory, ensureslothistory, removeslothistory } from '../workspace/tabs.js'
+import { renderfolderview, updateactivefilerow, closecontextmenu } from '../workspace/files.js'
+import { renderpreview, hidepreview, updateviewpagebutton } from '../workspace/preview.js'
+import { cleanmarkdown } from './rich/tiptap.bundle.js'
 import {
   ed,
   editorcontainer,
   emptystate,
   editortoolbar,
-  codeeditortoolbar,
   tiptapeditorcontainer,
   plaineditorwrap,
   noteeditor,
@@ -19,7 +18,10 @@ import {
   imageviewermeta,
   mediavieweraudiowrap,
   mediavieweraudio,
-  mediaviewervideo
+  mediaviewervideo,
+  mediaviewerpdf,
+  mediaviewerfile,
+  mediaviewerfilename
 } from './editorshared.js'
 import {
   mediakindfromnoteid,
@@ -31,9 +33,9 @@ import {
   autoplaymediaviewer,
   setbinarytoolbarvisible,
   bindfiledownloadonce
-} from './media.js'
+} from './media/media.js'
 import { ismarkdownfile, isnoteidmatch } from './noteutils.js'
-import { clearpinnededitorselection, initeditoraskaimenu, initeditorselectionpin } from './selection.js'
+import { clearpinnededitorselection, closeeditorcontextmenu, initeditoraskaimenu, initeditorselectionpin } from './selection.js'
 import {
   resolveauthorcolor,
   rendercmflashhighlight,
@@ -41,31 +43,38 @@ import {
   cleareditorflashhighlights,
   flashwholenote,
   renderflashhighlight
-} from './flash.js'
-import { setcmcontent } from './codemirror.js'
-import { sethistorypreviewactive } from './historypreview.js'
-import { inittiptapeditor, updatetoolbarstate } from './tiptap.js'
-import { stopnotecollab, connectnotesocket } from './collab.js'
+} from './collab/flash.js'
+import { setcmcontent } from './plain/codemirror.js'
+import { sethistorypreviewactive } from './history/historypreview.js'
+import { inittiptapeditor, updatetoolbarstate } from './rich/tiptap.js'
+import { inittoolbartips } from './toolbartip.js'
+import { stopnotecollab, connectnotesocket } from './collab/collab.js'
 import {
   iscreatedduringsession,
   writespotseen,
   getspotseen,
   saveworkspacestate
 } from './session.js'
-import { initplaineditor } from './plaineditor.js'
-import { initeditorlinkevents } from './links.js'
-import { bindeditorcursorscroll } from './cursors.js'
+import { initplaineditor } from './plain/plaineditor.js'
+import { initeditorlinkevents, closenotelinkmenu } from './rich/links.js'
+import { bindeditorcursorscroll } from './collab/cursors.js'
 
 // public editor api lives in the split modules --------------------
 export { saveworkspacestate, loadworkspacestate, marksessioncreated } from './session.js'
 export { isnoteidmatch, isexternalurl } from './noteutils.js'
-export { formatdraginsert, getdraggeditem, insertcontentintoactivenote } from './dragdrop.js'
-export { stopmediafortabclose } from './media.js'
-export { opennotelink } from './links.js'
+export {
+  formatdraginsert,
+  getdraggeditem,
+  getdraggeditems,
+  insertdraggeditemsintoactivenote,
+  insertcontentintoactivenote
+} from './dragdrop.js'
+export { stopmediafortabclose } from './media/media.js'
+export { opennotelink } from './rich/links.js'
 export { captureeditorselectionforai } from './selection.js'
-export { refreshreadingscale } from './cursors.js'
-export { showhistoryrevisionpreview, sethistorypreviewactive } from './historypreview.js'
-export { cleanmarkdown, expandmarkdownblanklines, preparemarkdownforload, patchnotemarkdownparser } from './tiptap.bundle.js'
+export { refreshreadingscale } from './collab/cursors.js'
+export { showhistoryrevisionpreview, sethistorypreviewactive } from './history/historypreview.js'
+export { cleanmarkdown, expandmarkdownblanklines, preparemarkdownforload, patchnotemarkdownparser } from './rich/tiptap.bundle.js'
 
 // swap the center pane over to the rich or plain text editor --------------------
 function showtexteditor(ismd) {
@@ -78,7 +87,6 @@ function showtexteditor(ismd) {
     editorcontainer.classList.toggle('plain-mode', !ismd)
   }
   editortoolbar?.classList.toggle('hidden', !ismd)
-  codeeditortoolbar?.classList.toggle('hidden', ismd)
   tiptapeditorcontainer?.classList.toggle('hidden', !ismd)
   plaineditorwrap?.classList.toggle('hidden', ismd)
 }
@@ -185,6 +193,12 @@ export function closenote() {
 // open note in center wysiwyg editor --------------------
 export async function opennote(noteid, options = {}) {
   window.dispatchEvent(new CustomEvent('mushnote-history-close'))
+  // drop any open context menus when switching tabs or notes --------------------
+  closecontextmenu()
+  closeeditorcontextmenu()
+  closenotelinkmenu()
+  document.getElementById('ai-context-menu')?.classList.add('hidden')
+  document.getElementById('ai-bubble-context-menu')?.classList.add('hidden')
   clearpinnededitorselection()
   // unbind before any setcontent or the new note gets written into the old doc --------------------
   stopnotecollab()
@@ -214,32 +228,51 @@ export async function opennote(noteid, options = {}) {
     document.title = `${tabname} - mushnote`
   }
   const opts = typeof options === 'boolean' ? { force: options } : (options || {})
-  const { newtab = false, replacecurrent = true, switchfolder = true } = opts
+  const {
+    newtab = false,
+    replacecurrent = true,
+    switchfolder = true,
+    fromhistory = false,
+  } = opts
+
+  const prevactive = state.activenoteid
+  let prevslot = prevactive
+    ? state.opentabs.findIndex((t) => isnoteidmatch(t, prevactive))
+    : -1
+  const alreadyopen = state.opentabs.some((t) => isnoteidmatch(t, noteid))
 
   // manage open tabs list --------------------
-  if (newtab) {
-    if (!state.opentabs.some(t => isnoteidmatch(t, noteid))) {
-      state.opentabs.push(noteid)
+  if (fromhistory && prevslot >= 0) {
+    // restore prior note into this same tab slot --------------------
+    state.opentabs[prevslot] = noteid
+    for (let i = state.opentabs.length - 1; i >= 0; i--) {
+      if (i !== prevslot && isnoteidmatch(state.opentabs[i], noteid)) {
+        removeslothistory(i)
+        state.opentabs.splice(i, 1)
+        if (i < prevslot) prevslot -= 1
+      }
     }
+  } else if (newtab) {
+    if (!alreadyopen) state.opentabs.push(noteid)
   } else if (replacecurrent) {
     if (state.opentabs.length === 0) {
       state.opentabs = [noteid]
-    } else if (state.opentabs.some(t => isnoteidmatch(t, noteid))) {
-      // note already in tabs so keep existing tabs
-    } else if (state.activenoteid && state.opentabs.some(t => isnoteidmatch(t, state.activenoteid))) {
-      const idx = state.opentabs.findIndex(t => isnoteidmatch(t, state.activenoteid))
-      state.opentabs[idx] = noteid
+    } else if (alreadyopen) {
+      // note already in tabs so just switch to it
+    } else if (prevslot >= 0) {
+      // in-place navigation: keep this tab slot and remember where we came from --------------------
+      if (prevactive && !isnoteidmatch(prevactive, noteid)) {
+        pushtabhistory(prevslot, prevactive)
+      }
+      state.opentabs[prevslot] = noteid
     } else {
       state.opentabs.push(noteid)
     }
-  } else {
-    if (!state.opentabs.some(t => isnoteidmatch(t, noteid))) {
-      state.opentabs.push(noteid)
-    }
+  } else if (!alreadyopen) {
+    state.opentabs.push(noteid)
   }
 
-  // deduplicate tabs --------------------
-  state.opentabs = Array.from(new Set(state.opentabs))
+  ensureslothistory()
 
   state.activenoteid = noteid
   rendertabs()
@@ -281,20 +314,19 @@ export async function opennote(noteid, options = {}) {
     document.title = `${tabname} - mushnote`
 
     const mediakind = data.note.media_kind || (data.note.is_image ? 'image' : mediakindfromnoteid(noteid))
-    if (mediakind === 'image' || mediakind === 'audio' || mediakind === 'video') {
+    if (mediakind === 'image' || mediakind === 'audio' || mediakind === 'video' || mediakind === 'pdf' || mediakind === 'file') {
       if (editorcontainer) editorcontainer.classList.add('hidden')
       if (imageviewercontainer) {
         imageviewercontainer.classList.remove('hidden')
         const mediaurl = data.note.media_url || data.note.image_url || rawurlfornote(noteid)
+        stopmediaplayback()
         if (mediakind === 'image') {
-          stopmediaplayback()
           clearmediaimagepreview()
           if (imageviewerimg) {
             imageviewerimg.classList.remove('hidden')
             imageviewerimg.src = mediaurl
           }
         } else if (mediakind === 'audio' && mediavieweraudio) {
-          stopmediaplayback()
           ed.mediaplayernoteid = noteid
           ed.mediaplayerkind = 'audio'
           if (mediavieweraudiowrap) mediavieweraudiowrap.classList.remove('hidden')
@@ -302,12 +334,19 @@ export async function opennote(noteid, options = {}) {
           loadaudiocoverart(noteid, data.note.updated_at || '')
           autoplaymediaviewer(mediavieweraudio)
         } else if (mediakind === 'video' && mediaviewervideo) {
-          stopmediaplayback()
           ed.mediaplayernoteid = noteid
           ed.mediaplayerkind = 'video'
           mediaviewervideo.classList.remove('hidden')
           mediaviewervideo.src = mediaurl
           autoplaymediaviewer(mediaviewervideo)
+        } else if (mediakind === 'pdf' && mediaviewerpdf) {
+          mediaviewerpdf.classList.remove('hidden')
+          mediaviewerpdf.src = mediaurl
+        } else if (mediakind === 'file' && mediaviewerfile) {
+          mediaviewerfile.classList.remove('hidden')
+          if (mediaviewerfilename) {
+            mediaviewerfilename.textContent = data.note.title || noteid.split('/').pop() || noteid
+          }
         }
         if (imageviewermeta) {
           const sizestr = data.note.size ? ` - ${Math.round(data.note.size / 1024)} kb` : ''
@@ -402,6 +441,7 @@ initplaineditor()
 initeditoraskaimenu()
 initeditorselectionpin()
 initeditorlinkevents()
+inittoolbartips()
 bindeditorcursorscroll()
 bindfiledownloadonce()
-import('./history-viewer.js').then((m) => m.inithistoryviewer()).catch(() => {})
+import('./history/history-viewer.js').then((m) => m.inithistoryviewer()).catch(() => {})

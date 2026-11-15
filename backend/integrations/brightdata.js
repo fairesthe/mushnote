@@ -182,18 +182,23 @@ function slimresult(item) {
   const url = canonurl(item.link || item.url || '', display)
   if (!url) return null
   const description = String(item.description || item.snippet || '').trim()
-  return {
+  const row = {
     title: String(item.title || '').trim(),
     url,
     description: description.slice(0, 600),
     source: String(item.source || item.display_link || '').trim(),
   }
+  const date = String(item.date || item.published || '').trim()
+  if (date) row.date = date.slice(0, 80)
+  return row
 }
 
-function normalizeresults(payload) {
+function normalizeresults(payload, { news = false } = {}) {
   const organic = payload?.organic || payload?.results?.organic || []
+  const newsrows = payload?.news || payload?.results?.news || []
+  const source = news ? (newsrows.length ? newsrows : organic) : (organic.length ? organic : newsrows)
   const rows = []
-  for (const item of organic) {
+  for (const item of source) {
     const row = slimresult(item)
     if (row) rows.push(row)
   }
@@ -327,11 +332,13 @@ function serpaiofailureretry(err) {
   )
 }
 
-function buildgoogleserpbody(cfg, query, page, withaio) {
+function buildgoogleserpbody(cfg, query, page, withaio, { news = false } = {}) {
   const googlestart = (page - 1) * serpresultsperpage
   const start = googlestart > 0 ? `&start=${googlestart}` : ''
-  const aioparam = withaio ? '&brd_ai_overview=2' : ''
-  const targeturl = `https://www.google.com/search?q=${encodeURIComponent(query)}&brd_json=1&gl=us&hl=en${start}${aioparam}`
+  // news mode skips ai overview (google news tab has none) --------------------
+  const aioparam = withaio && !news ? '&brd_ai_overview=2' : ''
+  const newsparam = news ? '&tbm=nws' : ''
+  const targeturl = `https://www.google.com/search?q=${encodeURIComponent(query)}&brd_json=1&gl=us&hl=en${start}${newsparam}${aioparam}`
   return {
     zone: cfg.serpzone,
     url: targeturl,
@@ -356,22 +363,33 @@ export async function brightdatawebsearch(conf, query, opts = {}) {
     throw new Error('query required')
   }
 
+  const news = Boolean(opts.news)
   const page = Math.min(Math.max(Number(opts.page) || 1, 1), 10)
   const googlestart = (page - 1) * serpresultsperpage
 
   let aioretried = false
   let serp
-  try {
-    serp = await fetchserp(cfg.apikey, buildgoogleserpbody(cfg, q, page, true))
-  } catch (err) {
-    if (!serpaiofailureretry(err)) {
-      throw err
+  if (news) {
+    try {
+      serp = await fetchserp(cfg.apikey, buildgoogleserpbody(cfg, q, page, false, { news: true }))
+    } catch (err) {
+      // same flaky 502 path as organic, just retry the news url once --------------------
+      if (!serpaiofailureretry(err)) throw err
+      serp = await fetchserp(cfg.apikey, buildgoogleserpbody(cfg, q, page, false, { news: true }))
     }
-    aioretried = true
-    serp = await fetchserp(cfg.apikey, buildgoogleserpbody(cfg, q, page, false))
+  } else {
+    try {
+      serp = await fetchserp(cfg.apikey, buildgoogleserpbody(cfg, q, page, true))
+    } catch (err) {
+      if (!serpaiofailureretry(err)) {
+        throw err
+      }
+      aioretried = true
+      serp = await fetchserp(cfg.apikey, buildgoogleserpbody(cfg, q, page, false))
+    }
   }
   const limit = Math.min(Math.max(opts.limit || 10, 1), 20)
-  const rows = normalizeresults(serp)
+  const rows = normalizeresults(serp, { news })
   const seen = new Set()
   const results = []
   for (const row of rows) {
@@ -382,12 +400,14 @@ export async function brightdatawebsearch(conf, query, opts = {}) {
   }
 
   const pagination = serp.pagination || {}
-  const ai_overview = slimaioverview(serp.ai_overview)
+  const ai_overview = news ? null : slimaioverview(serp.ai_overview)
 
   const out = {
     provider: 'brightdata',
     engine: serpengine,
     query: q,
+    news,
+    search_type: news ? 'news' : 'web',
     page,
     results_per_page: serpresultsperpage,
     offset: googlestart,
@@ -396,7 +416,9 @@ export async function brightdatawebsearch(conf, query, opts = {}) {
     result_count: results.length,
     results,
   }
-  if (ai_overview) {
+  if (news) {
+    out.reply_hint = 'google news results: open urls with web_read_page if needed. cite page source_tag at paragraph end'
+  } else if (ai_overview) {
     out.ai_overview = ai_overview
     out.ai_overview_source_tag = '[web:google.com]'
     out.reply_hint =
@@ -404,10 +426,12 @@ export async function brightdatawebsearch(conf, query, opts = {}) {
   } else {
     out.reply_hint = 'organic results only: open urls with web_read_page if needed. cite page source_tag at paragraph end'
   }
-  if (aioretried) {
-    out.ai_overview_note = 'overview capture failed, retried without ai overview'
-  } else if (!ai_overview) {
-    out.ai_overview_note = 'no google ai overview on this query'
+  if (!news) {
+    if (aioretried) {
+      out.ai_overview_note = 'overview capture failed, retried without ai overview'
+    } else if (!ai_overview) {
+      out.ai_overview_note = 'no google ai overview on this query'
+    }
   }
   return out
 }

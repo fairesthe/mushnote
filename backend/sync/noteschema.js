@@ -5,12 +5,17 @@ import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
 import BulletList from '@tiptap/extension-bullet-list'
 import HardBreak from '@tiptap/extension-hard-break'
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight'
+import { common, createLowlight } from 'lowlight'
 import { Fragment } from '@tiptap/pm/model'
 import { MarkdownSerializerState } from 'prosemirror-markdown'
 import katexPlugin from '@vscode/markdown-it-katex'
 import { InlineMath as BaseInlineMath, BlockMath as BaseBlockMath } from '@tiptap/extension-mathematics'
 import Link from '@tiptap/extension-link'
 import Image from '@tiptap/extension-image'
+import { TableKit } from '@tiptap/extension-table'
+
+const notelowlight = createLowlight(common)
 
 // shared by the browser editor and the server so markdown round trips the same on both sides --------------------
 
@@ -194,7 +199,21 @@ export const Highlight = Mark.create({
 // inline latex math node for note editor --------------------
 export const katexmarkdownplugin = katexPlugin.default || katexPlugin
 
+// pull latex out of katex html and normalize light whitespace --------------------
+function latexfromkatexel(el) {
+  const ann = el.querySelector('annotation[encoding="application/x-tex"]')
+  return (ann ? ann.textContent : '').replace(/\r\n?/g, '\n').trim()
+}
+
 export const InlineMath = BaseInlineMath.extend({
+  addOptions() {
+    return {
+      ...this.parent?.(),
+      katexOptions: {
+        throwOnError: false
+      }
+    }
+  },
   addInputRules() {
     return [
       ...(this.parent?.() || []),
@@ -219,12 +238,12 @@ export const InlineMath = BaseInlineMath.extend({
           setup(md) {
             if (md.__mushkatex) return
             md.__mushkatex = true
-            md.use(katexmarkdownplugin)
+            md.use(katexmarkdownplugin, { throwOnError: false })
           },
           updateDOM(dom) {
+            // katex plugin emits display math as p.katex-block > .katex-display --------------------
             dom.querySelectorAll('.katex-display').forEach(el => {
-              const ann = el.querySelector('annotation[encoding="application/x-tex"]')
-              const latex = ann ? ann.textContent.trim() : ''
+              const latex = latexfromkatexel(el)
               const div = document.createElement('div')
               div.setAttribute('data-type', 'block-math')
               div.setAttribute('data-latex', latex)
@@ -232,8 +251,7 @@ export const InlineMath = BaseInlineMath.extend({
               parent.replaceWith(div)
             })
             dom.querySelectorAll('.katex').forEach(el => {
-              const ann = el.querySelector('annotation[encoding="application/x-tex"]')
-              const latex = ann ? ann.textContent.trim() : ''
+              const latex = latexfromkatexel(el)
               const span = document.createElement('span')
               span.setAttribute('data-type', 'inline-math')
               span.setAttribute('data-latex', latex)
@@ -248,16 +266,35 @@ export const InlineMath = BaseInlineMath.extend({
 
 // block display latex math node for note editor --------------------
 export const BlockMath = BaseBlockMath.extend({
+  addOptions() {
+    return {
+      ...this.parent?.(),
+      katexOptions: {
+        displayMode: true,
+        throwOnError: false
+      }
+    }
+  },
   addInputRules() {
     return [
       ...(this.parent?.() || []),
+      // $$latex$$ on its own line becomes a block equation --------------------
       new InputRule({
-        find: /^\$\$([^$]+)\$\$$/,
+        find: /^\$\$([^$\n]+)\$\$$/,
         handler: ({ state, range, match }) => {
           const latex = match[1]?.trim()
           if (!latex) return null
           const { tr } = state
-          tr.replaceWith(range.from, range.to, this.type.create({ latex }))
+          const $from = state.doc.resolve(range.from)
+          const node = this.type.create({ latex })
+          const full = $from.depth > 0
+            && $from.parent.isTextblock
+            && range.from === $from.start()
+            && range.to === $from.end()
+            && $from.node(-1).canReplaceWith($from.index(-1), $from.indexAfter(-1), this.type)
+            ? { from: $from.before(), to: $from.after() }
+            : range
+          tr.replaceWith(full.from, full.to, node)
         }
       })
     ]
@@ -266,7 +303,9 @@ export const BlockMath = BaseBlockMath.extend({
     return {
       markdown: {
         serialize(state, node) {
-          state.write(`\n\n$$\n${node.attrs.latex}\n$$\n\n`)
+          const latex = String(node.attrs.latex || '').trim()
+          state.write(`$$\n${latex}\n$$`)
+          state.closeBlock(node)
         }
       }
     }
@@ -326,7 +365,7 @@ export const NoteLink = Link.extend({
       attrs.rel = 'noopener noreferrer'
     } else {
       attrs['data-note-link'] = href
-      attrs.title = 'click to open (right click for new tab)'
+      attrs.title = 'click to open or create (right click for options)'
     }
     return ['a', mergeAttributes(this.options.HTMLAttributes, attrs), 0]
   }
@@ -543,11 +582,15 @@ export function notecontentextensions(opts = {}) {
       bulletList: false,
       hardBreak: false,
       link: false,
+      codeBlock: false,
       trailingNode: opts.headless ? false : undefined,
       dropcursor: opts.headless ? false : undefined,
       gapcursor: opts.headless ? false : undefined,
-      codeBlock: { HTMLAttributes: nospell },
       code: { HTMLAttributes: nospell }
+    }),
+    CodeBlockLowlight.configure({
+      lowlight: notelowlight,
+      HTMLAttributes: nospell
     }),
     Markdown.configure({
       html: true,
@@ -566,10 +609,12 @@ export function notecontentextensions(opts = {}) {
     }),
     Highlight,
     InlineMath.configure({
-      onClick: opts.oninlinemathclick
+      onClick: opts.oninlinemathclick,
+      katexOptions: { throwOnError: false }
     }),
     BlockMath.configure({
-      onClick: opts.onblockmathclick
+      onClick: opts.onblockmathclick,
+      katexOptions: { displayMode: true, throwOnError: false }
     }),
     NoteLink.configure({
       openOnClick: false,
@@ -594,8 +639,42 @@ export function notecontentextensions(opts = {}) {
       HTMLAttributes: {
         class: 'editor-image'
       }
+    }),
+    // gfm pipe tables, columns size to content --------------------
+    TableKit.configure({
+      table: {
+        resizable: false,
+        HTMLAttributes: {
+          class: 'editor-table'
+        }
+      }
     })
   ]
+}
+
+// turn [[note]] and [[note|label]] into normal markdown links --------------------
+export function expandwikilinks(text) {
+  if (!text || !text.includes('[[')) return text || ''
+  // leave fenced and inline code alone --------------------
+  return text.split(/(```[\s\S]*?```|`[^`\n]*`)/g).map((chunk, i) => {
+    if (i % 2 === 1) return chunk
+    return chunk.replace(/\[\[([^\]\n]+?)\]\]/g, (_, inner) => {
+      let target = String(inner)
+      let label = null
+      const pipe = target.indexOf('|')
+      if (pipe >= 0) {
+        label = target.slice(pipe + 1).trim()
+        target = target.slice(0, pipe).trim()
+      } else {
+        target = target.trim()
+      }
+      if (!target) return `[[${inner}]]`
+      const display = label || target.split('/').pop().replace(/\.md$/i, '')
+      const safelabel = display.replace(/\[/g, '\\[').replace(/\]/g, '\\]')
+      const safehref = target.replace(/[()]/g, (ch) => encodeURIComponent(ch))
+      return `[${safelabel}](${safehref})`
+    })
+  }).join('')
 }
 
 // clean up markdown output to prevent symbol corruption and runaway newlines --------------------
@@ -607,6 +686,8 @@ export function cleanmarkdown(text) {
   // restore accidental backslash escaped list bullets and task checkboxes --------------------
   cleaned = cleaned.replace(/^([ \t]*)\\([*+->])(?:\s+|$)/gm, '$1$2 ')
   cleaned = cleaned.replace(/^([ \t]*[*+-]\s*)\\\[\s*([xX]?)\s*\\\]/gm, (match, prefix, checked) => `${prefix.trimEnd()} [${checked ? checked : ' '}]`)
+  // obsidian style wiki links become clickable note links --------------------
+  cleaned = expandwikilinks(cleaned)
   // trim runaway blank lines only at five or more, keep intentional spacing --------------------
   cleaned = cleaned.replace(/\n{5,}/g, '\n\n\n\n')
   return cleaned
@@ -843,6 +924,55 @@ export function patchnotemarkdown(editor) {
       if (height) token.attrSet('height', String(height))
       return origimagerender(tokens, idx, options, env, self)
     }
+  }
+}
+
+// hard breaks save as <br> but clipboard should look like normal newlines --------------------
+// paste still works because markdown breaks true turns those newlines back into hard breaks
+export function normalizeclipboardmarkdown(text) {
+  if (!text) return ''
+  return String(text)
+    .replace(/\r\n?/g, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+}
+
+// selection slice as markdown for copy cut and clipboard text --------------------
+export function selectionmarkdown(editor, from, to) {
+  if (!editor?.state?.doc) return ''
+  const start = typeof from === 'number' ? from : editor.state.selection.from
+  const end = typeof to === 'number' ? to : editor.state.selection.to
+  if (start === end) return ''
+
+  const $from = editor.state.doc.resolve(start)
+  const $to = editor.state.doc.resolve(end)
+  // range inside one code block would otherwise lose the fence --------------------
+  if ($from.parent.type.name === 'codeBlock' && $from.parent === $to.parent) {
+    const lang = $from.parent.attrs.language || ''
+    const body = editor.state.doc.textBetween(start, end, '\n')
+    return cleanmarkdown(normalizeclipboardmarkdown('```' + lang + '\n' + body + '\n```'))
+  }
+
+  const storage = editor.storage?.markdown
+  const serializer = storage?.serializer
+  if (!serializer?.serialize) {
+    return normalizeclipboardmarkdown(editor.state.doc.textBetween(start, end, '\n\n'))
+  }
+  try {
+    const slice = editor.state.doc.slice(start, end)
+    // whole blocks one by one so mermaid and other fences stay intact --------------------
+    if (slice.openStart === 0 && slice.openEnd === 0) {
+      const parts = []
+      slice.content.forEach((node) => {
+        if (!node.isBlock) return
+        parts.push(serializer.serialize(Fragment.from(node)).replace(/\n+$/g, ''))
+      })
+      if (parts.length) {
+        return cleanmarkdown(normalizeclipboardmarkdown(parts.join('\n\n')))
+      }
+    }
+    return cleanmarkdown(normalizeclipboardmarkdown(serializer.serialize(slice.content)))
+  } catch {
+    return normalizeclipboardmarkdown(editor.state.doc.textBetween(start, end, '\n\n'))
   }
 }
 

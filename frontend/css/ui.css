@@ -215,6 +215,16 @@
   pointer-events: none;
 }
 
+.context-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background-color: color-mix(in srgb, var(--border-color) 70%, transparent);
+}
+
+.context-divider.hidden {
+  display: none;
+}
+
 .ai-drawer.hidden {
   width: 0 !important;
   min-width: 0 !important;
@@ -252,8 +262,8 @@
 .ai-conv-picker {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  max-width: min(220px, 42vw);
+  gap: 8px;
+  max-width: min(260px, 55vw);
   padding: 4px 6px 4px 2px;
   border: none;
   background: transparent;
@@ -269,15 +279,21 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
+.ai-conv-picker .ai-avatar-small {
+  flex-shrink: 0;
+}
+
 .ai-conv-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .ai-conv-chevron {
   flex-shrink: 0;
   opacity: 0.75;
+  transition: transform 0.15s ease;
 }
 
 .ai-drawer.conversations-mode .ai-conv-chevron {

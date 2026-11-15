@@ -133,10 +133,12 @@ export function requestlogger(req, res, next) {
     // only log actual client or server errors --------------------
     if (res.statusCode >= 400) {
       const duration = Date.now() - start
-      const statusstr = `${theme.bad}${res.statusCode}${theme.reset}`
+      // 401 is expected auth noise so keep it amber --------------------
+      const tone = res.statusCode === 401 ? theme.warn : theme.bad
+      const statusstr = `${tone}${res.statusCode}${theme.reset}`
       const durationstr = `${duration}ms`
       const url = req.originalUrl || req.url
-      printline('http', theme.bad, req.method, url, `${statusstr} ${durationstr}`)
+      printline('http', tone, req.method, url, `${statusstr} ${durationstr}`)
     }
   })
   next()

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { isinternalwrite, isinternaldelete, textfilepattern } from './vault.js'
-import { applyexternalchange, handleexternaldelete, migratedocentry } from '../sync/sync.js'
+import { applyexternalchange, handleexternaldelete, migratedocentry, evictnotedoc } from '../sync/sync.js'
 import { getlatestrevision, gethistoryidsunder, migratehistoryids, recordevent } from './history.js'
 import { log } from '../core/logger.js'
 
@@ -156,6 +156,8 @@ export function initvaultwatcher(vaultdir, historydir, wss) {
     // handle file deletion --------------------
     if (!fs.existsSync(fullpath)) {
       if (isinternaldelete(fullpath)) {
+        // api already deleted the file; still evict live docs so a flush cannot resurrect it
+        evictnotedoc(historydir, relpath)
         broadcastvaultchange({ type: 'vault_changed', action: 'delete', note_id: relpath })
         return
       }

@@ -5,6 +5,14 @@ import { markinternalwrite, markinternaldelete } from './vault.js'
 
 const schemaversion = 1
 
+function normalizedraft(draft) {
+  const text = typeof draft?.text === 'string' ? draft.text : ''
+  const attachments = Array.isArray(draft?.attachments)
+    ? draft.attachments.filter((a) => a && typeof a === 'object')
+    : []
+  return { text, attachments }
+}
+
 function conversationsdir(vaultdir, userid) {
   const user = String(userid || '').trim().toLowerCase()
   return path.join(vaultdir, 'system', user, 'conversations')
@@ -92,6 +100,7 @@ export function createconversation(vaultdir, userid, opts = {}) {
     gemini_history: [],
     display_log: [],
     last_system_prompt_meta: null,
+    draft: { text: '', attachments: [] },
   }
   const filepath = conversationfilepath(vaultdir, userid, id)
   writejsonfile(filepath, record)
@@ -115,6 +124,9 @@ export function saveconversation(vaultdir, userid, convid, patch) {
       ? patch.gemini_history
       : existing.gemini_history,
     display_log: Array.isArray(patch?.display_log) ? patch.display_log : existing.display_log,
+    draft: patch?.draft !== undefined
+      ? normalizedraft(patch.draft)
+      : normalizedraft(existing.draft),
   }
 
   writejsonfile(conversationfilepath(vaultdir, userid, id), record)

@@ -11,6 +11,7 @@ export function formatdraginsert(item) {
 
   const isimage = item.isimage || /\.(png|jpg|jpeg|gif|webp|svg|ico|bmp)$/i.test(path)
   const ismarkdown = item.ismarkdown || (item.type === 'file' && (path.endsWith('.md') || path.endsWith('.markdown')))
+  const isfolder = item.type === 'folder'
 
   if (isimage) {
     const url = path.startsWith('media/') ? `/${path}` : `/api/raw?id=${encodeURIComponent(path)}`
@@ -26,11 +27,22 @@ export function formatdraginsert(item) {
     return {
       type: 'link',
       url: path,
+      label: title,
       text: `[${title}](${path})`
     }
   }
 
-  // paths otherwise for code files, folders, and plain text --------------------
+  // vault files become real links in md notes (not escaped bracket text) --------------------
+  if (!isfolder && item.type === 'file') {
+    return {
+      type: 'link',
+      url: path,
+      label: name,
+      text: `[${name}](${path})`
+    }
+  }
+
+  // folders and plain path inserts --------------------
   return {
     type: 'path',
     text: path
@@ -47,6 +59,38 @@ export function getdraggeditem(e) {
     return state.activefiledrag
   }
   return null
+}
+
+// one or many vault items from a sidebar drag --------------------
+export function getdraggeditems(e) {
+  const item = getdraggeditem(e) || state.activefiledrag
+  if (!item) return []
+  if (Array.isArray(item.items) && item.items.length) return item.items.filter((i) => i?.path)
+  if (item.path) return [item]
+  return []
+}
+
+// drop every dragged vault item into the open note --------------------
+export function insertdraggeditemsintoactivenote(items) {
+  const list = (items || []).filter((i) => i?.path)
+  if (!list.length || !state.activenoteid) return
+
+  const ismd = ismarkdownfile(state.activenoteid)
+  for (let i = 0; i < list.length; i++) {
+    insertcontentintoactivenote(formatdraginsert(list[i]))
+    if (i >= list.length - 1) continue
+    if (ismd && ed.tiptapinstance) {
+      const sep = /\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i.test(list[i].path || '') ? '\n' : ' '
+      ed.tiptapinstance.chain().focus().insertContent(sep).run()
+    } else if (ed.cmview) {
+      const view = ed.cmview
+      const pos = view.state.selection.main.head
+      view.dispatch({
+        changes: { from: pos, to: pos, insert: '\n' },
+        selection: { anchor: pos + 1 }
+      })
+    }
+  }
 }
 
 // clear all drag target visual indicators --------------------
@@ -73,6 +117,13 @@ export function insertcontentintoactivenote(insertinfo, pos = null) {
     }
     if (insertinfo.type === 'image') {
       editor.chain().focus().setImage({ src: insertinfo.url, alt: insertinfo.alt || 'image' }).run()
+    } else if (insertinfo.type === 'link' && insertinfo.url) {
+      const label = insertinfo.label || insertinfo.alt || String(insertinfo.url).split('/').pop() || insertinfo.url
+      editor.chain().focus().insertContent({
+        type: 'text',
+        text: label,
+        marks: [{ type: 'link', attrs: { href: insertinfo.url } }]
+      }).run()
     } else {
       editor.chain().focus().insertContent(insertinfo.text).run()
     }

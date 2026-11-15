@@ -4,9 +4,9 @@ import { readuserpreferences, readnote, listnotes } from '../vault/vault.js'
 import { tooldeclarations, executetool, extractheadings } from './tools.js'
 import { getweather } from '../integrations/weather.js'
 import { log } from '../core/logger.js'
-import { compresschathistory, foldtooloutputfordisplay } from './chathistory.js'
-import { sanitizereplycites } from './chatreplysanitize.js'
-import { recovertoolcallsfromtext, striphallucinatedtoolcalls } from './texttoolrecovery.js'
+import { compresschathistory, foldtooloutputfordisplay } from './chat/chathistory.js'
+import { sanitizereplycites } from './chat/chatreplysanitize.js'
+import { recovertoolcallsfromtext, striphallucinatedtoolcalls } from './chat/texttoolrecovery.js'
 import { buildsystemprompt, userreferencesactivenote } from './agentprompt.js'
 
 const agentmodel = 'gemini-3.5-flash-lite'
@@ -86,7 +86,7 @@ function resolveactivenoteblock(vaultdir, activenoteid, prompt, attachments) {
     }
     const preview = lines.slice(0, 250).join('\n')
     return {
-      block: `${preview}\n\n[previewing lines 1-250 of ${lines.length} — use file_open for more]\n\nsections:\n${headinglines}`,
+      block: `${preview}\n\n[previewing lines 1-250 of ${lines.length} — use textfile_read for more]\n\nsections:\n${headinglines}`,
       mode: 'full',
     }
   }
@@ -121,49 +121,53 @@ function formattoolstatus(call) {
   const args = call.args || {}
   const target = args.path || args.filename || args.title || args.note_id || ''
 
-  if (name === 'file_create') {
+  if (name === 'textfile_create') {
     return target ? `creating ${target}...` : 'creating a file...'
   }
-  if (name === 'file_open' || name === 'file_open_for_user') {
-    return target ? `opening ${target}...` : 'reading a file...'
+  if (name === 'textfile_read') {
+    if (String(args.mode || '').toLowerCase() === 'outline') {
+      return target ? `reading outline of ${target}...` : 'checking outline...'
+    }
+    return target ? `reading ${target}...` : 'reading a file...'
   }
-  if (name === 'file_view') {
-    return target ? `analyzing ${target}...` : 'loading file for analysis...'
+  if (name === 'file_analyze') {
+    const modemeta = String(args.mode || '').toLowerCase() === 'metadata'
+    if (modemeta) return target ? `checking ${target}...` : 'checking file...'
+    return target ? `analyzing ${target}...` : 'analyzing file...'
   }
-  if (name === 'file_edit_diff') {
+  if (name === 'file_open_for_user') {
+    return target ? `opening ${target}...` : 'opening file...'
+  }
+  if (name === 'textfile_edit_diff') {
     return target ? `editing ${target}...` : 'editing file...'
   }
   if (name === 'file_search') {
+    const recent = args.recent === true || args.recent === 'true' || args.recent === 1 || args.recent === '1'
+    if (recent) return 'checking recent files...'
     return args.query ? `searching files for "${args.query}"...` : 'searching files...'
   }
   if (name === 'web_search') {
+    const news = args.news === true || args.news === 'true' || args.news === 1 || args.news === '1'
+    if (news) return args.query ? `searching news for "${args.query}"...` : 'searching news...'
     return args.query ? `searching web for "${args.query}"...` : 'searching web...'
   }
   if (name === 'web_read_page') {
-    const target = args.url || 'page'
-    try {
-      const parsed = new URL(target)
-      return `reading ${parsed.hostname}...`
-    } catch {
-      return 'reading web page...'
-    }
+    const target = String(args.url || '').trim()
+    return target ? `reading ${target}...` : 'reading web page...'
   }
   if (name === 'youtube_video') {
     const action = String(args.action || 'info').toLowerCase()
-    if (action === 'transcript') return 'fetching youtube transcript...'
+    if (action === 'transcript') {
+      const detail = String(args.detail || 'regular').toLowerCase() === 'full' ? 'full' : 'regular'
+      return detail === 'full' ? 'fetching full youtube transcript...' : 'fetching youtube transcript...'
+    }
     if (action === 'download') {
       const media = String(args.media || 'audio').toLowerCase()
       return media === 'video' ? 'downloading youtube video...' : 'downloading youtube audio...'
     }
     return 'reading youtube details...'
   }
-  if (name === 'file_outline') {
-    return target ? `reading outline of ${target}...` : 'checking outline...'
-  }
-  if (name === 'file_list_recent') {
-    return 'checking recent files...'
-  }
-  if (name === 'file_history') {
+  if (name === 'textfile_history') {
     return target ? `reading history of ${target}...` : 'checking file history...'
   }
   if (name === 'file_move') {
@@ -178,8 +182,32 @@ function formattoolstatus(call) {
   if (name === 'folder_delete') {
     return args.folder_path ? `deleting folder ${args.folder_path}...` : 'deleting folder...'
   }
-  if (name === 'user_profile_update') {
-    return 'updating profile...'
+  if (name === 'archive_extract') {
+    return target ? `extracting ${target}...` : 'extracting archive...'
+  }
+  if (name === 'download') {
+    const mode = String(args.mode || 'auto').toLowerCase()
+    const dest = args.destination || args.path || ''
+    if (mode === 'git' || mode === 'clone') {
+      return dest ? `cloning repo into ${dest}...` : 'cloning repo...'
+    }
+    if (mode === 'file') {
+      return dest ? `downloading to ${dest}...` : 'downloading file...'
+    }
+    try {
+      const host = args.url ? new URL(args.url).hostname : ''
+      if (/github\.com|gitlab\.com|bitbucket\.org|codeberg\.org|\.git$/i.test(String(args.url || ''))) {
+        return dest ? `cloning repo into ${dest}...` : (host ? `cloning ${host}...` : 'cloning repo...')
+      }
+      return dest ? `downloading to ${dest}...` : (host ? `downloading from ${host}...` : 'downloading...')
+    } catch {
+      return 'downloading...'
+    }
+  }
+  if (name === 'api_request') {
+    const method = String(args.method || 'GET').toUpperCase()
+    const target = String(args.url || '').trim()
+    return target ? `${method} ${target}...` : `${method} request...`
   }
   return 'working...'
 }
@@ -207,16 +235,29 @@ function formatreferenceattachment(att, vaultdir) {
     return `[attached text selection${loc}${lines}]\n\`\`\`\n${att.text}\n\`\`\``
   }
 
-  if (att.refKind === 'file' && att.path) {
+  if ((att.refKind === 'file' || att.refKind === 'upload') && att.path) {
     const note = readnote(vaultdir, att.path)
+    const looksarchive =
+      att.mediaKind === 'archive' ||
+      /\.(zip|jar|7z|rar)$/i.test(att.path) ||
+      /\.(zip|jar|7z|rar)$/i.test(att.name || '')
+    if (looksarchive) {
+      const label = att.refKind === 'upload' ? 'chat upload' : 'attached archive'
+      return `[${label} at ${att.path} | archive — call archive_extract to unpack into a folder next to it, or move this vault path]`
+    }
+    if (att.refKind === 'upload' || note?.media_kind) {
+      const kind = note?.media_kind || att.mediaKind || 'file'
+      const label = att.refKind === 'upload' ? 'chat upload' : 'attached media'
+      return `[${label} at ${att.path} | ${kind} — call file_analyze to examine, or move / markdown-link this vault path into a note]`
+    }
     if (note && typeof note.content === 'string' && note.content.length > 0) {
       const maxchars = 12000
       const body = note.content.length > maxchars
-        ? `${note.content.slice(0, maxchars)}\n...[truncated — use file_open for the rest]`
+        ? `${note.content.slice(0, maxchars)}\n...[truncated — use textfile_read for the rest]`
         : note.content
       return `[attached vault file: ${att.path}]\n\`\`\`\n${body}\n\`\`\``
     }
-    return `[attached vault file: ${att.path} — use file_open or file_view to load it]`
+    return `[attached vault file: ${att.path} — use textfile_read to read it]`
   }
 
   if (att.refKind === 'folder' && att.path) {
@@ -260,6 +301,10 @@ export async function runagentchat(prompt, options = {}) {
   })
 
   const activeuser = humanusers.find(u => u.id === active_user_id) || humanusers[0]
+  const userpersonalitynote = activeuser?.id
+    ? readnote(vaultdir, `system/${activeuser.id}/personality.md`)
+    : null
+  const userpersonality = userpersonalitynote ? userpersonalitynote.content : ''
   const locationname = typeof conf.location === 'string'
     ? conf.location
     : (conf.location?.city || conf.location?.query || conf.location?.name || '')
@@ -283,6 +328,7 @@ export async function runagentchat(prompt, options = {}) {
     activenoteblock,
     activenotemode,
     aipersonality,
+    userpersonality,
     weatherinfo,
     locationname,
     datestr,
@@ -314,20 +360,25 @@ export async function runagentchat(prompt, options = {}) {
       try {
         const stream = await chat.sendMessageStream({ message: msgpayload })
         let turntext = ''
+        let thoughtonlytext = ''
         const functioncalls = []
         let hasfunctioncalls = false
         const textbuffer = []
+        let finishreason = ''
 
         for await (const chunk of stream) {
           // parts are the source of truth, chunk.functionCalls is just a view over them --------------------
           let text = ''
-          const parts = chunk.candidates?.[0]?.content?.parts || []
+          const candidate = chunk.candidates?.[0]
+          if (candidate?.finishReason) finishreason = String(candidate.finishReason)
+          const parts = candidate?.content?.parts || []
           for (const part of parts) {
             if (part.functionCall) {
               hasfunctioncalls = true
               functioncalls.push(part.functionCall)
-            } else if (typeof part.text === 'string' && !part.thought) {
-              text += part.text
+            } else if (typeof part.text === 'string') {
+              if (part.thought) thoughtonlytext += part.text
+              else text += part.text
             }
           }
 
@@ -360,9 +411,16 @@ export async function runagentchat(prompt, options = {}) {
           }
         }
 
+        if (!hasfunctioncalls && !turntext.trim() && thoughtonlytext.trim()) {
+          log.agent('warn', 'visible reply empty', `thought-only turn${finishreason ? ` (${finishreason})` : ''}`)
+        } else if (!hasfunctioncalls && !turntext.trim() && finishreason) {
+          log.agent('warn', 'visible reply empty', finishreason)
+        }
+
         return {
           text: hasfunctioncalls ? '' : turntext,
-          functionCalls: functioncalls
+          functionCalls: functioncalls,
+          finishReason: finishreason,
         }
       } catch (err) {
         attempt += 1
@@ -394,6 +452,7 @@ export async function runagentchat(prompt, options = {}) {
         if (block) refblocks.push(block)
         continue
       }
+      // legacy base64 attachments still accepted --------------------
       if (att && att.data && att.mimeType) {
         messageparts.push({
           inlineData: {
@@ -452,7 +511,7 @@ export async function runagentchat(prompt, options = {}) {
     for (const call of response.functionCalls) {
       log.agent('tool', call.name, formattoolargs(call))
       if (onProgress) {
-        onProgress('status', { status: formattoolstatus(call) })
+        onProgress('status', { status: formattoolstatus(call), tool: call.name })
       }
 
       const tooloutput = await executetool(call.name, call.args, {
@@ -483,9 +542,7 @@ export async function runagentchat(prompt, options = {}) {
       functionresponses.push(buildfunctionresponse(call, tooloutput))
     }
 
-    if (onProgress) {
-      onProgress('status', { status: 'thinking...' })
-    }
+    // leave the last tool status on screen while the model plans the next turn --------------------
 
     // calls scraped out of plain text never existed in the chat so answer them as text too --------------------
     response = await sendstreamwithretry(response.recovered
@@ -509,6 +566,21 @@ export async function runagentchat(prompt, options = {}) {
     if (!rawtext.trim()) {
       const lastcall = toolcallsexecuted[toolcallsexecuted.length - 1]
       rawtext = `completed ${toolcallsexecuted.length} action(s) including ${lastcall.name}`
+    }
+  }
+
+  // plain chat can also come back blank (quiz answers, thought-only turns) --------------------
+  if (!rawtext.trim() && toolcallsexecuted.length === 0 && !response.functionCalls?.length) {
+    try {
+      const retryturn = await sendstreamwithretry([{
+        text: 'your previous reply was empty. answer the user now with a normal visible chat reply (grade quiz answers if that is what they sent, then continue or score)'
+      }])
+      rawtext = retryturn.text || ''
+    } catch (e) {
+      log.agent('warn', 'failed to recover empty reply', e.message)
+    }
+    if (!rawtext.trim()) {
+      rawtext = 'i blanked for a second, send that again'
     }
   }
   const thoughtmatch = rawtext.match(/<thought>([\s\S]*?)<\/thought>/i)

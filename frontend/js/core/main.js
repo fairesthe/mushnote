@@ -1,11 +1,12 @@
 import { api, applytheme, resolveaccent } from './api.js'
 import { state } from './state.js'
-import { initfiles, loadnotes } from '../sidebar/files.js'
+import { initfiles, loadnotes, closecontextmenu } from '../workspace/files.js'
 import { initassistant, loadaiinfo } from '../chat/assistant.js'
 import { initconversationstorage } from '../chat/conversations.js'
-import { initlayout } from '../app/layout.js'
-import { initsidebarsettings } from '../app/settings.js'
-import { initpreview } from '../app/preview.js'
+import { initlayout } from '../workspace/layout.js'
+import { initsidebarsettings } from '../workspace/settings.js'
+import { initpreview } from '../workspace/preview.js'
+import { initosfiledrop } from '../workspace/osfiledrop.js'
 import { initspellcheckdisabled } from './spellcheck.js'
 
 // dom elements for workspace header --------------------
@@ -45,6 +46,7 @@ async function boot() {
     initlayout()
     initfiles()
     initpreview()
+    initosfiledrop()
     initassistant()
     await initconversationstorage()
     initsidebarsettings()
@@ -59,21 +61,21 @@ async function boot() {
 // global keyboard shortcuts --------------------
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    const newnotedialog = document.getElementById('new-note-dialog')
-    if (newnotedialog && !newnotedialog.classList.contains('hidden')) {
-      newnotedialog.classList.add('hidden')
-    }
     const aictx = document.getElementById('ai-context-menu')
     if (aictx && !aictx.classList.contains('hidden')) {
       aictx.classList.add('hidden')
     }
     const filectx = document.getElementById('file-context-menu')
     if (filectx && !filectx.classList.contains('hidden')) {
-      filectx.classList.add('hidden')
+      closecontextmenu()
     }
     const editorctx = document.getElementById('editor-context-menu')
     if (editorctx && !editorctx.classList.contains('hidden')) {
       editorctx.classList.add('hidden')
+    }
+    const linkctx = document.getElementById('note-link-context-menu')
+    if (linkctx && !linkctx.classList.contains('hidden')) {
+      linkctx.classList.add('hidden')
     }
   }
 })

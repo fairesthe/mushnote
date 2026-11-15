@@ -1,10 +1,9 @@
-import { PluginKey, CMStateEffect } from './tiptap.bundle.js'
+import { PluginKey, CMStateEffect } from './rich/tiptap.bundle.js'
 
 // dom elements for editor --------------------
 export const editorcontainer = document.getElementById('editor-container')
 export const emptystate = document.getElementById('empty-state')
 export const editortoolbar = document.getElementById('editor-toolbar')
-export const codeeditortoolbar = document.getElementById('code-editor-toolbar')
 export const tiptapeditorcontainer = document.getElementById('tiptap-editor')
 export const plaineditorwrap = document.getElementById('plain-editor-wrap')
 export const codemirroreditor = document.getElementById('codemirror-editor')
@@ -17,6 +16,9 @@ export const mediavieweraudiowrap = document.getElementById('media-viewer-audio-
 export const mediaviewerart = document.getElementById('media-viewer-art')
 export const mediavieweraudio = document.getElementById('media-viewer-audio')
 export const mediaviewervideo = document.getElementById('media-viewer-video')
+export const mediaviewerpdf = document.getElementById('media-viewer-pdf')
+export const mediaviewerfile = document.getElementById('media-viewer-file')
+export const mediaviewerfilename = document.getElementById('media-viewer-file-name')
 export const binaryfiletoolbar = document.getElementById('binary-file-toolbar')
 
 export const btnfiledownload = document.getElementById('btn-file-download')
@@ -64,5 +66,7 @@ export const ed = {
   isremoteapplying: false,
   draggedimagenodepos: null,
   pinnedselection: null,
-  iseditorpinbound: false
+  iseditorpinbound: false,
+  // keep cm selection pin across right click caret move --------------------
+  cmkeepselectionpin: false
 }

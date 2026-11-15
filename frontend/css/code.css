@@ -19,7 +19,7 @@
 .codemirror-editor .cm-editor {
   height: 100%;
   outline: none;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+  font-family: var(--font-mono);
   font-size: calc(13.5px * var(--reading-scale, 1));
   line-height: 1.6;
   background-color: #000000;
@@ -117,12 +117,8 @@
   display: none;
 }
 
-.editor-container.plain-mode .code-editor-toolbar {
-  display: flex;
-}
-
 .editor-container.plain-mode .editor-body {
-  height: calc(100vh - 40px);
+  height: auto;
   overflow-y: hidden;
 }
 

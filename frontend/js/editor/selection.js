@@ -1,5 +1,5 @@
 import { state } from '../core/state.js'
-import { Decoration, DecorationSet, CMDecoration } from './tiptap.bundle.js'
+import { Decoration, DecorationSet, CMDecoration, TextSelection, selectionmarkdown } from './rich/tiptap.bundle.js'
 import {
   ed,
   tiptapeditorcontainer,
@@ -9,6 +9,31 @@ import {
   clearpineffect
 } from './editorshared.js'
 import { ismarkdownfile } from './noteutils.js'
+
+function gettiptapcopyrange() {
+  if (!ed.tiptapinstance) return null
+  const { from, to, empty } = ed.tiptapinstance.state.selection
+  if (!empty && from !== to) return { from, to }
+  if (ed.pinnedselection?.kind === 'tiptap') {
+    const pin = ed.pinnedselection
+    if (pin.from !== pin.to) return { from: pin.from, to: pin.to }
+  }
+  return null
+}
+
+function inserttiptapmarkdown(text) {
+  const editor = ed.tiptapinstance
+  if (!editor) return
+  const parser = editor.storage?.markdown?.parser
+  if (parser?.parse) {
+    try {
+      const html = parser.parse(text)
+      editor.chain().focus().insertContent(html).run()
+      return
+    } catch {}
+  }
+  editor.chain().focus().insertContent(text).run()
+}
 
 function readliveeditorselectionpin() {
   if (!state.activenoteid) return null
@@ -59,18 +84,26 @@ function buildselectionreferencefrompin(pin) {
   }
 
   if (pin.kind === 'cm' && ed.cmview) {
-    const text = ed.cmview.state.sliceDoc(pin.from, pin.to).trim()
-    if (!text) return null
-    const linestart = ed.cmview.state.doc.lineAt(pin.from).number
-    const lineend = ed.cmview.state.doc.lineAt(pin.to).number
-    return {
-      type: 'reference',
-      refKind: 'selection',
-      name: linestart === lineend ? `${notelabel}:${linestart}` : `${notelabel}:${linestart}-${lineend}`,
-      path: state.activenoteid,
-      text,
-      lineStart: linestart,
-      lineEnd: lineend
+    try {
+      const doclen = ed.cmview.state.doc.length
+      const from = Math.max(0, Math.min(pin.from, doclen))
+      const to = Math.max(from, Math.min(pin.to, doclen))
+      if (from === to) return null
+      const text = ed.cmview.state.sliceDoc(from, to).trim()
+      if (!text) return null
+      const linestart = ed.cmview.state.doc.lineAt(from).number
+      const lineend = ed.cmview.state.doc.lineAt(Math.max(from, to - 1)).number
+      return {
+        type: 'reference',
+        refKind: 'selection',
+        name: linestart === lineend ? `${notelabel}:${linestart}` : `${notelabel}:${linestart}-${lineend}`,
+        path: state.activenoteid,
+        text,
+        lineStart: linestart,
+        lineEnd: lineend
+      }
+    } catch {
+      return null
     }
   }
 
@@ -123,9 +156,13 @@ function clearpinnedtiptap() {
 
 function renderpinnedcm(from, to) {
   if (!ed.cmview) return
+  const doclen = ed.cmview.state.doc.length
+  const a = Math.max(0, Math.min(from, doclen))
+  const b = Math.max(a, Math.min(to, doclen))
+  if (a === b) return
   ed.cmview.dispatch({
     effects: setpineffect.of(CMDecoration.set([
-      CMDecoration.mark({ from, to, class: 'editor-pinned-selection' })
+      CMDecoration.mark({ class: 'editor-pinned-selection' }).range(a, b)
     ], true))
   })
 }
@@ -181,8 +218,30 @@ const ctxitemeditorcut = document.getElementById('ctx-item-editor-cut')
 const ctxitemeditorcopy = document.getElementById('ctx-item-editor-copy')
 const ctxitemeditorpaste = document.getElementById('ctx-item-editor-paste')
 const ctxitemaskai = document.getElementById('ctx-item-ask-ai')
+const ctxitemtableaddrow = document.getElementById('ctx-item-table-add-row')
+const ctxitemtableaddcolumn = document.getElementById('ctx-item-table-add-column')
+const ctxitemtableremoverow = document.getElementById('ctx-item-table-remove-row')
+const ctxitemtableremovecolumn = document.getElementById('ctx-item-table-remove-column')
+let editorcontextintable = false
+let pendingtablepos = null
 let pendingeditorselectionref = null
 let iseditoraskmenubound = false
+let ignoreeditorctxclickuntil = 0
+
+function runtableaction(command) {
+  if (!ed.tiptapinstance) return
+  const clickpos = pendingtablepos
+  closeeditorcontextmenu()
+  if (clickpos != null) {
+    try {
+      const view = ed.tiptapinstance.view
+      const $pos = view.state.doc.resolve(clickpos)
+      view.dispatch(view.state.tr.setSelection(TextSelection.near($pos)))
+    } catch {}
+  }
+  if (!ed.tiptapinstance.isActive('table')) return
+  ed.tiptapinstance.chain().focus()[command]().run()
+}
 
 function haseditorselection() {
   if (!state.activenoteid) return false
@@ -194,8 +253,9 @@ function runeditorcopy() {
   if (!haseditorselection()) return
 
   if (ed.tiptapinstance && ismarkdownfile(state.activenoteid)) {
-    const { from, to } = ed.tiptapinstance.state.selection
-    const text = ed.tiptapinstance.state.doc.textBetween(from, to, '\n')
+    const range = gettiptapcopyrange()
+    if (!range) return
+    const text = selectionmarkdown(ed.tiptapinstance, range.from, range.to)
     void navigator.clipboard.writeText(text).catch(() => {
       ed.tiptapinstance.chain().focus().run()
       document.execCommand('copy')
@@ -225,8 +285,10 @@ function runeditorcut() {
   if (!haseditorselection()) return
 
   if (ed.tiptapinstance && ismarkdownfile(state.activenoteid)) {
-    const { from, to } = ed.tiptapinstance.state.selection
-    const text = ed.tiptapinstance.state.doc.textBetween(from, to, '\n')
+    const range = gettiptapcopyrange()
+    if (!range) return
+    const { from, to } = range
+    const text = selectionmarkdown(ed.tiptapinstance, from, to)
     void navigator.clipboard.writeText(text).then(() => {
       ed.tiptapinstance.chain().focus().deleteRange({ from, to }).run()
     }).catch(() => {
@@ -270,7 +332,7 @@ function runeditorpaste() {
     if (typeof text !== 'string') return
 
     if (ed.tiptapinstance && ismarkdownfile(state.activenoteid)) {
-      ed.tiptapinstance.chain().focus().insertContent(text).run()
+      inserttiptapmarkdown(text)
       return
     }
 
@@ -308,31 +370,73 @@ function runeditorpaste() {
   })
 }
 
-function updateeditorcontextmenuitems(hassel, hasaskai) {
+function updateeditorcontextmenuitems(hassel, hasaskai, intable = false) {
   if (ctxitemeditorcut) ctxitemeditorcut.classList.toggle('disabled', !hassel)
   if (ctxitemeditorcopy) ctxitemeditorcopy.classList.toggle('disabled', !hassel)
   if (ctxitemaskai) ctxitemaskai.classList.toggle('hidden', !hasaskai)
+  if (ctxitemtableaddrow) ctxitemtableaddrow.classList.toggle('hidden', !intable)
+  if (ctxitemtableaddcolumn) ctxitemtableaddcolumn.classList.toggle('hidden', !intable)
+  if (ctxitemtableremoverow) ctxitemtableremoverow.classList.toggle('hidden', !intable)
+  if (ctxitemtableremovecolumn) ctxitemtableremovecolumn.classList.toggle('hidden', !intable)
 }
 
-function closeeditorcontextmenu() {
+export function closeeditorcontextmenu() {
   if (editorcontextmenu) editorcontextmenu.classList.add('hidden')
   pendingeditorselectionref = null
+  editorcontextintable = false
+  pendingtablepos = null
 }
 
-export function openeditorselectionmenu(x, y, ref) {
+export function openeditorselectionmenu(x, y, ref, options = {}) {
   if (!editorcontextmenu || !state.activenoteid) return
-  pendingeditorselectionref = ref
-  updateeditorcontextmenuitems(haseditorselection(), !!ref)
+  // some browsers fire a click right after contextmenu --------------------
+  ignoreeditorctxclickuntil = Date.now() + 400
+  // pin live selection so ask still works after right click collapses caret --------------------
+  const live = readliveeditorselectionpin()
+  if (live) ed.pinnedselection = live
+  pendingeditorselectionref = ref || (ed.pinnedselection && buildselectionreferencefrompin(ed.pinnedselection)) || null
+  editorcontextintable = Boolean(options.intable)
+  pendingtablepos = typeof options.tablepos === 'number' ? options.tablepos : null
+  updateeditorcontextmenuitems(haseditorselection(), !!pendingeditorselectionref, editorcontextintable)
   editorcontextmenu.style.left = `${x}px`
   editorcontextmenu.style.top = `${y}px`
   editorcontextmenu.classList.remove('hidden')
+  // pin render after menu is up so a cm dispatch mid-contextmenu cant kill the menu --------------------
+  if (ed.pinnedselection) {
+    try {
+      renderpinnededitorselection()
+    } catch {}
+  }
+}
+
+function runaskaifrommenu(e) {
+  e.preventDefault()
+  e.stopPropagation()
+  const ref = pendingeditorselectionref || geteditorselectionreference()
+  closeeditorcontextmenu()
+  if (!ref) return
+  try {
+    captureeditorselectionforai()
+  } catch {}
+  window.dispatchEvent(new CustomEvent('mushnote-add-ai-reference', { detail: ref }))
 }
 
 export function initeditoraskaimenu() {
   if (iseditoraskmenubound) return
   iseditoraskmenubound = true
 
-  document.addEventListener('click', closeeditorcontextmenu)
+  // keep editor selection when interacting with the menu --------------------
+  if (editorcontextmenu) {
+    editorcontextmenu.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+    })
+  }
+
+  document.addEventListener('click', (e) => {
+    if (Date.now() < ignoreeditorctxclickuntil) return
+    if (editorcontextmenu && !editorcontextmenu.classList.contains('hidden') && editorcontextmenu.contains(e.target)) return
+    closeeditorcontextmenu()
+  })
 
   if (ctxitemeditorcut) {
     ctxitemeditorcut.addEventListener('click', (e) => {
@@ -360,14 +464,40 @@ export function initeditoraskaimenu() {
     })
   }
 
+  // mousedown so it fires even when menu preventDefault suppresses click quirks --------------------
   if (ctxitemaskai) {
-    ctxitemaskai.addEventListener('click', (e) => {
+    ctxitemaskai.addEventListener('mousedown', runaskaifrommenu)
+  }
+
+  if (ctxitemtableaddrow) {
+    ctxitemtableaddrow.addEventListener('click', (e) => {
       e.stopPropagation()
-      const ref = pendingeditorselectionref
-      closeeditorcontextmenu()
-      if (!ref) return
-      captureeditorselectionforai()
-      window.dispatchEvent(new CustomEvent('mushnote-add-ai-reference', { detail: ref }))
+      if (ctxitemtableaddrow.classList.contains('hidden')) return
+      runtableaction('addRowAfter')
+    })
+  }
+
+  if (ctxitemtableaddcolumn) {
+    ctxitemtableaddcolumn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      if (ctxitemtableaddcolumn.classList.contains('hidden')) return
+      runtableaction('addColumnAfter')
+    })
+  }
+
+  if (ctxitemtableremoverow) {
+    ctxitemtableremoverow.addEventListener('click', (e) => {
+      e.stopPropagation()
+      if (ctxitemtableremoverow.classList.contains('hidden')) return
+      runtableaction('deleteRow')
+    })
+  }
+
+  if (ctxitemtableremovecolumn) {
+    ctxitemtableremovecolumn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      if (ctxitemtableremovecolumn.classList.contains('hidden')) return
+      runtableaction('deleteColumn')
     })
   }
 }

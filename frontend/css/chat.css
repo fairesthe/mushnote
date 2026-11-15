@@ -113,7 +113,7 @@
   border: 1px solid var(--border-color);
   padding: 1px 4px;
   border-radius: 3px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
 }
 
@@ -139,9 +139,11 @@
 
 .msg-bubble.rendered-md table {
   border-collapse: collapse;
-  width: 100%;
-  margin: 0 0 8px 0;
+  width: max-content;
+  max-width: 100%;
+  margin: 0 0 4px 0;
   font-size: 12px;
+  table-layout: auto;
 }
 
 .msg-bubble.rendered-md th,
@@ -165,10 +167,12 @@
 
 .msg-bubble.rendered-md .katex-display {
   margin: 8px 0;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
   overflow-x: auto;
   overflow-y: hidden;
   padding: 4px 0;
-  text-align: center;
 }
 
 .msg-bubble.rendered-md .katex {
@@ -181,6 +185,10 @@
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 8px 10px 2px;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
 }
 
 .mermaid-diagram-shell {
@@ -263,8 +271,11 @@
 }
 
 .tiptap-editor div[data-type="block-math"] {
-  display: flex;
-  justify-content: center;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
   margin: 12px 0;
   padding: 8px 12px;
   border-radius: 6px;
@@ -275,32 +286,69 @@
   background-color: #0d0d0d;
 }
 
+.tiptap-editor div[data-type="block-math"] .katex-display {
+  margin: 0;
+}
+
 .tiptap-editor .inline-math-error,
 .tiptap-editor .block-math-error {
   color: #ef4444;
-  font-family: monospace;
+  font-family: var(--font-mono);
 }
 
 /* editor and chat note links -------------------- */
 .tiptap-editor a.editor-link,
 .tiptap-editor a {
   color: var(--accent-color);
-  text-decoration: underline;
-  text-underline-offset: 2.5px;
+  text-decoration: none;
   cursor: pointer;
-  transition: opacity 0.15s ease, color 0.15s ease;
-}
-
-.tiptap-editor a.editor-link.note-link,
-.tiptap-editor a[data-note-link] {
-  text-decoration-style: dotted;
-  text-underline-offset: 3px;
+  transition: color 0.15s ease, opacity 0.15s ease;
 }
 
 .tiptap-editor a.editor-link:hover,
 .tiptap-editor a:hover {
-  color: #60a5fa;
-  text-decoration-style: solid;
+  color: color-mix(in srgb, var(--accent-color) 72%, #ffffff);
+}
+
+.tiptap-editor a.editor-link:active,
+.tiptap-editor a:active {
+  color: color-mix(in srgb, var(--accent-color) 70%, #000000);
+}
+
+.tiptap-editor a.editor-link:has(.is-missing-note),
+.tiptap-editor .is-missing-note {
+  color: #8a8a8a !important;
+}
+
+.tiptap-editor a.editor-link:has(.is-missing-note):hover,
+.tiptap-editor a.editor-link:has(.is-missing-note):active {
+  color: #a8a8a8 !important;
+}
+
+.tiptap-editor .editor-link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  margin-left: 4px;
+  vertical-align: -1px;
+  user-select: none;
+  pointer-events: none;
+}
+
+.tiptap-editor .editor-link-icon img {
+  width: 12px;
+  height: 12px;
+  display: block;
+  object-fit: contain;
+  filter: var(--icon-accent-filter, none);
+  opacity: 0.95;
+}
+
+.tiptap-editor .editor-link-icon.is-missing img {
+  filter: grayscale(1);
+  opacity: 0.4;
 }
 
 .msg-bubble.rendered-md a.note-link,
@@ -368,10 +416,10 @@
   font-size: 10px;
 }
 
-/* non-admin simple activity status line -------------------- */
+/* tool activity lines stay in chat after they finish -------------------- */
 .ai-activity-status {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   align-self: flex-start;
   width: 100%;
   max-width: 100%;
@@ -380,38 +428,80 @@
   font-size: 12px;
   color: #707070;
   padding: 2px 2px;
-  margin: 2px 0 4px 0;
+  margin: 2px 0 2px 0;
   user-select: none;
   opacity: 1;
-  max-height: 40px;
-  transition: opacity 0.3s ease, max-height 0.3s ease, margin 0.3s ease, padding 0.3s ease;
-  overflow: hidden;
+}
+
+.ai-activity-status.is-done {
+  margin-bottom: 2px;
+}
+
+.ai-activity-status.is-live {
+  margin-bottom: 4px;
 }
 
 .ai-activity-status-inner {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   min-height: 16px;
+  max-width: 100%;
 }
 
 .ai-activity-label {
   line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
-.ai-activity-spinner {
-  width: 16px;
-  height: 16px;
+.ai-activity-icon,
+.ai-status-icon {
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
-  border: 2.5px solid color-mix(in srgb, #707070 35%, transparent);
-  border-top-color: color-mix(in srgb, var(--accent-color, #a8a8a8) 85%, #ffffff);
-  border-radius: 50%;
-  animation: ai-activity-spin 0.7s linear infinite;
+  filter: var(--icon-accent-filter, none);
+  transform-origin: center center;
 }
-@keyframes ai-activity-spin {
-  to {
-    transform: rotate(360deg);
+
+.ai-activity-icon.is-working {
+  animation: ai-activity-pulse 0.45s ease-in-out infinite;
+}
+
+@keyframes ai-activity-pulse {
+  0%,
+  100% {
+    transform: scale(1);
   }
+  50% {
+    transform: scale(1.35);
+  }
+}
+
+.ai-status-soft,
+.ai-status-hard,
+.ai-status-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-status-soft {
+  color: #777777;
+  border-color: #1c1c1c;
+  background-color: #080808;
+}
+
+.ai-status-hard {
+  color: #ffaa00;
+  border-color: #3d2f0a;
+  background-color: #191408;
+}
+
+.ai-status-error {
+  color: #ff6b6b;
+  border-color: #4a1515;
+  background-color: #140505;
 }
 /* specific tool styles -------------------- */
 .tool-badge-view {
@@ -491,7 +581,7 @@
   box-sizing: border-box;
 }
 
-/* attached files preview row at top of input in rounded squares -------------------- */
+/* attached files preview row above chat input -------------------- */
 .ai-attachments-preview {
   display: flex;
   flex-wrap: wrap;
@@ -499,27 +589,34 @@
   padding-bottom: 2px;
 }
 
-.ai-input-wrap.drag-over,
-.ai-drawer.drag-over {
-  outline: 1px dashed #3b82f6;
-  outline-offset: -2px;
+.ai-input-wrap.drag-over {
+  outline: 2px dashed var(--accent-color);
+  outline-offset: -3px;
 }
 
 .attachment-chip {
   position: relative;
-  width: 58px;
-  height: 58px;
-  border-radius: 10px;
-  background-color: #141414;
-  border: 1px solid #2b2b2b;
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  overflow: hidden;
+  gap: 8px;
+  min-width: 132px;
+  max-width: 200px;
+  height: 40px;
+  padding: 0 28px 0 8px;
+  border-radius: 6px;
+  background-color: #101010;
+  border: 1px solid #2a2a2a;
   box-sizing: border-box;
   flex-shrink: 0;
+  overflow: hidden;
   user-select: none;
+}
+
+.attachment-chip.has-thumb {
+  min-width: 88px;
+  max-width: 120px;
+  height: 48px;
+  padding: 0;
 }
 
 .attachment-chip img.attachment-thumb {
@@ -529,42 +626,48 @@
   display: block;
 }
 
-.attachment-chip .attachment-icon-box {
+.attachment-chip .attachment-type-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  object-fit: contain;
+  filter: var(--icon-accent-filter, none);
+}
+
+.attachment-chip .attachment-meta {
   display: flex;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: 4px;
-  width: 100%;
-  height: 100%;
-  box-sizing: border-box;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
 }
 
 .attachment-chip .attachment-badge {
   font-size: 9px;
-  font-weight: 700;
-  color: #a0a0a0;
+  font-weight: 600;
+  color: #8a8a8a;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
+  line-height: 1.1;
 }
 
 .attachment-chip .attachment-name {
-  font-size: 8px;
-  color: #737373;
-  max-width: 48px;
+  font-size: 12px;
+  color: #d4d4d4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.2;
 }
 
 .attachment-chip .attachment-remove {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 4px;
+  right: 4px;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
+  border-radius: 4px;
   background-color: rgba(0, 0, 0, 0.85);
   color: #ffffff;
   border: none;
@@ -585,14 +688,14 @@
   background-color: #ef4444;
 }
 
-/* chat input box with attach button at bottom left -------------------- */
+/* chat input box with attach left and send right under the field -------------------- */
 .ai-input-box {
   display: flex;
   flex-direction: column;
   background-color: var(--ai-input-surface);
   border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
   border-radius: 8px;
-  padding: 8px 10px 8px 10px;
+  padding: 10px 12px 8px;
   gap: 6px;
   transition: border-color 0.15s ease;
   box-sizing: border-box;
@@ -610,11 +713,12 @@
   color: #ffffff;
   font-family: inherit;
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 1.4;
   outline: none;
   resize: none;
-  min-height: 48px;
-  max-height: 160px;
+  min-height: 1.4em;
+  max-height: 140px;
+  height: 1.4em;
   overflow-y: auto;
   box-sizing: border-box;
 }
@@ -705,9 +809,9 @@
 }
 
 .msg-attachment-img {
-  width: 100px;
-  height: 100px;
-  border-radius: 8px;
+  width: 120px;
+  height: 72px;
+  border-radius: 6px;
   object-fit: cover;
   border: 1px solid #333333;
 }
@@ -715,17 +819,28 @@
 .msg-attachment-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background-color: #1a1a1a;
-  border: 1px solid #333333;
+  gap: 7px;
+  background-color: #101010;
+  border: 1px solid #2a2a2a;
   border-radius: 6px;
-  padding: 5px 8px;
-  font-size: 11px;
+  padding: 6px 10px;
+  font-size: 12px;
   color: #e5e5e5;
+  max-width: 220px;
 }
 
-.msg-attachment-pill svg {
+.msg-attachment-pill span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msg-attachment-pill .attachment-pill-icon {
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
+  object-fit: contain;
+  filter: var(--icon-accent-filter, none);
 }
 
 /* inline source cite badges in ai chat markdown -------------------- */

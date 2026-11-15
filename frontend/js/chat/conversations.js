@@ -102,6 +102,7 @@ export async function saveactiveconversation() {
       display_log: payload.display_log,
       model: payload.model,
       last_system_prompt_meta: payload.last_system_prompt_meta,
+      draft: payload.draft,
     }),
   })
   const idx = conversationscache.findIndex((c) => c.id === activeconversationid)
@@ -194,9 +195,18 @@ export async function createnewconversation() {
   titlegenerated = false
   setconversationtitle(rec.title)
   localStorage.setItem(activestoragekey(), rec.id)
-  applyconversationpersiststate({ gemini_history: [], display_log: [] })
+  applyconversationpersiststate({
+    gemini_history: [],
+    display_log: [],
+    draft: { text: '', attachments: [] },
+  })
   setconversationsmode(false)
   renderconversationslist()
+  // jump straight to compose --------------------
+  requestAnimationFrame(() => {
+    const input = document.getElementById('ai-input')
+    if (input && !input.disabled) input.focus()
+  })
 }
 
 async function deleteconversationbyid(id) {

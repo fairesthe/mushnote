@@ -1,16 +1,25 @@
 import { api, resolveaccent } from '../core/api.js'
 import { state } from '../core/state.js'
-import { loadnotes, navigatefolder, clearalldraghighlights } from '../sidebar/files.js'
-import { opennote, closenote, saveworkspacestate, marksessioncreated, opennotelink, isexternalurl, getdraggeditem, isnoteidmatch } from '../editor/editor.js'
-import { getpreviewtargetid, renderpreview } from '../app/preview.js'
-import { rendertabs, closetab } from '../sidebar/tabs.js'
-import { updatetogglebuttons, ensureaidraweropen } from '../app/layout.js'
+import { loadnotes, navigatefolder, clearalldraghighlights, getfileicon } from '../workspace/files.js'
+import {
+  opennote,
+  closenote,
+  saveworkspacestate,
+  marksessioncreated,
+  opennotelink,
+  isexternalurl,
+  getdraggeditems,
+  isnoteidmatch
+} from '../editor/editor.js'
+import { getpreviewtargetid, renderpreview } from '../workspace/preview.js'
+import { rendertabs, closetab } from '../workspace/tabs.js'
+import { updatetogglebuttons, ensureaidraweropen } from '../workspace/layout.js'
 import {
   renderchatmarkdown,
   enhancechatcites,
   enhancemermaid,
   formatmermaidforpaste,
-} from '../editor/tiptap.bundle.js'
+} from '../editor/rich/tiptap.bundle.js'
 
 // dom elements for ai assistant --------------------
 const aidrawer = document.getElementById('ai-drawer')
@@ -43,9 +52,26 @@ let lastagentmodel = ''
 let currentattachments = []
 const maxfiles = 4
 const maxfilesize = 20 * 1024 * 1024
+const chatuploadfolder = 'media/chat-uploads'
+
+function sanitizeuploadfilename(name) {
+  const cleaned = String(name || 'file').replace(/[^a-zA-Z0-9_\-. ]/g, '').trim()
+  return cleaned || 'file'
+}
+
+function vaultpreviewurl(vaultpath) {
+  if (!vaultpath) return null
+  return `/api/raw?id=${encodeURIComponent(vaultpath)}`
+}
+
+function isimageattachment(att) {
+  if (!att) return false
+  if (att.type === 'image' || att.mediaKind === 'image') return true
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(att.path || att.name || '')
+}
 
 // resize image so max dimension is around 560 for fast uploads and low resolution --------------------
-function resizeimage(file, maxdim = 560) {
+function resizeimagetodataurl(file, maxdim = 560) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -71,14 +97,11 @@ function resizeimage(file, maxdim = 560) {
         ctx.drawImage(img, 0, 0, width, height)
 
         const dataurl = canvas.toDataURL('image/jpeg', 0.85)
-        const base64 = dataurl.split(',')[1]
         resolve({
-          name: file.name,
-          type: 'image',
+          dataurl,
           mimeType: 'image/jpeg',
-          data: base64,
-          previewUrl: dataurl,
-          size: Math.round((base64.length * 3) / 4)
+          size: Math.round(((dataurl.split(',')[1] || '').length * 3) / 4),
+          filename: sanitizeuploadfilename(file.name.replace(/\.[^.]+$/, '') + '.jpg')
         })
       }
       img.onerror = () => reject(new Error('failed to load image'))
@@ -87,6 +110,35 @@ function resizeimage(file, maxdim = 560) {
     reader.onerror = () => reject(new Error('failed to read image file'))
     reader.readAsDataURL(file)
   })
+}
+
+// save processed chat attachment into media/chat-uploads --------------------
+async function uploadchattovault(dataurl, filename, { label } = {}) {
+  const { withuploadui, uploaddataurl, sanitizeuploadname } = await import('../workspace/upload.js')
+  const safe = sanitizeuploadname(filename)
+  const uploadpath = `${chatuploadfolder}/${Date.now()}-${safe}`
+  const res = await withuploadui(label || `uploading ${safe}...`, async ({ signal, setprogress }) => {
+    setprogress(12)
+    return uploaddataurl(uploadpath, dataurl, {
+      signal,
+      onprogress: (pct) => setprogress(12 + Math.round(pct * 0.88))
+    })
+  })
+  try { loadnotes() } catch {}
+  return res.path || uploadpath
+}
+
+function makeuploadattachment({ name, path, mediaKind, mimeType, size, previewUrl }) {
+  return {
+    type: 'reference',
+    refKind: 'upload',
+    name: name || path.split('/').pop() || 'upload',
+    path,
+    mediaKind: mediaKind || '',
+    mimeType: mimeType || '',
+    size: size || null,
+    previewUrl: previewUrl || (mediaKind === 'image' ? vaultpreviewurl(path) : null)
+  }
 }
 
 // convert audio buffer to mono 16bit wav blob --------------------
@@ -161,14 +213,12 @@ async function convertvideotoaudio(file) {
     const audiobuffer = await ctx.decodeAudioData(arraybuffer)
     const wavblob = audiobuffertowav(audiobuffer, 16000)
     const dataurl = await blobtodataurl(wavblob)
-    const base64 = dataurl.split(',')[1]
-    const audioname = file.name.replace(/\.[^/.]+$/, '') + '.wav'
+    const audioname = sanitizeuploadfilename(file.name.replace(/\.[^/.]+$/, '') + '.wav')
     return {
       name: audioname,
-      type: 'audio',
+      mediaKind: 'audio',
       mimeType: 'audio/wav',
-      data: base64,
-      previewUrl: dataurl,
+      dataurl,
       size: wavblob.size
     }
   } finally {
@@ -176,25 +226,51 @@ async function convertvideotoaudio(file) {
   }
 }
 
-// read direct audio or pdf file as base64 --------------------
-async function readfileasbase64(file, type, mimeType) {
+// read direct audio or pdf file as data url for vault upload --------------------
+async function readfileforupload(file, mediaKind, mimeType) {
   const dataurl = await blobtodataurl(file)
-  const base64 = dataurl.split(',')[1]
   return {
-    name: file.name,
-    type,
+    name: sanitizeuploadfilename(file.name),
+    mediaKind,
     mimeType: mimeType || file.type,
-    data: base64,
-    previewUrl: type === 'audio' ? dataurl : null,
+    dataurl,
     size: file.size
   }
 }
 
-// handle selected files for upload --------------------
-async function handlefileupload(filelist) {
-  if (!filelist || filelist.length === 0) return
+function isarchivefilename(name) {
+  return /\.(zip|jar|7z|rar)$/i.test(String(name || ''))
+}
 
-  for (const file of filelist) {
+function isarchivefile(file) {
+  if (!file) return false
+  if (isarchivefilename(file.name)) return true
+  const mime = String(file.type || '').toLowerCase()
+  return (
+    mime === 'application/zip' ||
+    mime === 'application/x-zip-compressed' ||
+    mime === 'application/java-archive' ||
+    mime === 'application/x-7z-compressed' ||
+    mime === 'application/vnd.rar' ||
+    mime === 'application/x-rar-compressed'
+  )
+}
+
+function archivemimeforfile(file) {
+  const name = String(file?.name || '').toLowerCase()
+  if (name.endsWith('.jar')) return 'application/java-archive'
+  if (name.endsWith('.7z')) return 'application/x-7z-compressed'
+  if (name.endsWith('.rar')) return 'application/vnd.rar'
+  return file?.type || 'application/zip'
+}
+
+// handle selected files for upload --------------------
+export async function handlefileupload(filelist) {
+  // clone in case this came from a live dataTransfer FileList --------------------
+  const files = Array.from(filelist || [])
+  if (!files.length) return
+
+  for (const file of files) {
     if (currentattachments.length >= maxfiles) {
       alert(`maximum ${maxfiles} files can be attached at a time`)
       break
@@ -206,28 +282,49 @@ async function handlefileupload(filelist) {
     }
 
     try {
+      let prepared = null
       if (file.type.startsWith('image/')) {
-        const att = await resizeimage(file, 560)
-        currentattachments.push(att)
+        const resized = await resizeimagetodataurl(file, 560)
+        prepared = {
+          name: resized.filename,
+          mediaKind: 'image',
+          mimeType: resized.mimeType,
+          dataurl: resized.dataurl,
+          size: resized.size
+        }
       } else if (file.type.startsWith('video/')) {
-        const att = await convertvideotoaudio(file)
-        currentattachments.push(att)
+        prepared = await convertvideotoaudio(file)
       } else if (file.type.startsWith('audio/')) {
-        const att = await readfileasbase64(file, 'audio', file.type || 'audio/wav')
-        currentattachments.push(att)
+        prepared = await readfileforupload(file, 'audio', file.type || 'audio/wav')
       } else if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-        const att = await readfileasbase64(file, 'pdf', 'application/pdf')
-        currentattachments.push(att)
+        prepared = await readfileforupload(file, 'pdf', 'application/pdf')
+      } else if (isarchivefile(file)) {
+        prepared = await readfileforupload(file, 'archive', archivemimeforfile(file))
       } else {
-        alert(`unsupported file type for "${file.name}" (pdf, images, sound, and video only)`)
+        alert(`unsupported file type for "${file.name}" (pdf, images, sound, video, and zip/7z/rar only)`)
+        continue
       }
+
+      const vaultpath = await uploadchattovault(prepared.dataurl, prepared.name, {
+        label: `uploading ${prepared.name}...`
+      })
+      currentattachments.push(makeuploadattachment({
+        name: prepared.name,
+        path: vaultpath,
+        mediaKind: prepared.mediaKind,
+        mimeType: prepared.mimeType,
+        size: prepared.size,
+        previewUrl: prepared.mediaKind === 'image' ? vaultpreviewurl(vaultpath) : null
+      }))
     } catch (err) {
+      if (err?.name === 'AbortError') break
       console.error('failed to process attachment', err)
       alert(`could not process file "${file.name}"`)
     }
   }
 
   renderattachmentspreview()
+  scheduledraftsave()
   if (aifileinput) aifileinput.value = ''
 }
 
@@ -265,26 +362,82 @@ export function addreferenceattachment(ref) {
     timestamp: ref.timestamp || ''
   })
   renderattachmentspreview()
+  scheduledraftsave()
   return true
 }
 
-function referenceiconsvg(refkind) {
-  if (refkind === 'chat') {
-    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#8b5cf6" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>'
-  }
-  if (refkind === 'folder') {
-    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>'
-  }
-  if (refkind === 'selection') {
-    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>'
-  }
-  return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#a3a3a3" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>'
+function scheduledraftsave() {
+  import('./conversations.js')
+    .then((m) => m.schedulesaveactiveconversation())
+    .catch(() => {})
+}
+
+function clonedraftattachments(list) {
+  return (Array.isArray(list) ? list : []).map((att) => {
+    if (!att || typeof att !== 'object') return null
+    if (att.type === 'reference') {
+      return {
+        type: 'reference',
+        refKind: att.refKind,
+        name: att.name || '',
+        path: att.path || '',
+        text: att.text || '',
+        lineStart: att.lineStart || null,
+        lineEnd: att.lineEnd || null,
+        role: att.role || '',
+        logIndex: att.logIndex != null ? att.logIndex : null,
+        timestamp: att.timestamp || '',
+        mediaKind: att.mediaKind || '',
+        mimeType: att.mimeType || '',
+        previewUrl: att.previewUrl || (att.refKind === 'upload' && att.path && isimageattachment(att)
+          ? vaultpreviewurl(att.path)
+          : null),
+        size: att.size || null,
+      }
+    }
+    // legacy base64 drafts still clone but prefer path uploads going forward --------------------
+    return {
+      name: att.name || '',
+      type: att.type || 'file',
+      mimeType: att.mimeType || '',
+      data: att.data || '',
+      previewUrl: att.previewUrl || null,
+      size: att.size || null,
+    }
+  }).filter(Boolean)
 }
 
 function referencebadge(refkind) {
   if (refkind === 'chat') return 'reply'
   if (refkind === 'folder') return 'folder'
-  if (refkind === 'selection') return 'text'
+  if (refkind === 'selection') return 'selection'
+  if (refkind === 'upload') return 'upload'
+  return 'note'
+}
+
+function attachmenticonpath(att) {
+  if (!att) return '/resources/icons/files/common.png'
+  if (att.mediaKind === 'image' || att.type === 'image') return '/resources/icons/files/image.png'
+  if (att.mediaKind === 'audio' || att.type === 'audio') return '/resources/icons/files/audio.png'
+  if (att.mediaKind === 'pdf' || att.type === 'pdf') return '/resources/icons/files/pdf.png'
+  if (att.mediaKind === 'archive' || isarchivefilename(att.path || att.name || '')) {
+    return '/resources/icons/files/archive.png'
+  }
+  if (att.type === 'reference') {
+    if (att.refKind === 'folder') return '/resources/icons/files/folder.png'
+    if (att.refKind === 'upload') return getfileicon(att.path || att.name || '')
+    return '/resources/icons/general/reference.png'
+  }
+  return getfileicon(att.name || '')
+}
+
+function attachmenttypelabel(att) {
+  if (!att) return 'file'
+  if (att.mediaKind) return att.mediaKind
+  if (att.type === 'reference') return referencebadge(att.refKind)
+  if (att.type === 'image') return 'image'
+  if (att.type === 'audio') return 'audio'
+  if (att.type === 'pdf') return 'pdf'
   return 'file'
 }
 
@@ -300,9 +453,12 @@ function mapattachmentforapi(att) {
       lineEnd: att.lineEnd,
       role: att.role,
       logIndex: att.logIndex,
-      timestamp: att.timestamp
+      timestamp: att.timestamp,
+      mediaKind: att.mediaKind || '',
+      mimeType: att.mimeType || ''
     }
   }
+  // legacy inline base64 still supported --------------------
   return {
     name: att.name,
     type: att.type,
@@ -311,8 +467,44 @@ function mapattachmentforapi(att) {
   }
 }
 
-function renderreferencepill(att) {
-  return `<div class="msg-attachment-pill">${referenceiconsvg(att.refKind)} <span>${att.name}</span></div>`
+function mapattachmentforlog(att) {
+  if (att.type === 'reference') {
+    return {
+      name: att.name,
+      type: 'reference',
+      refKind: att.refKind,
+      path: att.path,
+      mediaKind: att.mediaKind || '',
+      previewUrl: att.previewUrl || (isimageattachment(att) && att.path ? vaultpreviewurl(att.path) : null),
+      size: att.size || null,
+      text: att.refKind === 'chat' || att.refKind === 'selection' ? att.text : undefined,
+      lineStart: att.lineStart,
+      lineEnd: att.lineEnd,
+      role: att.role,
+      logIndex: att.logIndex,
+      timestamp: att.timestamp
+    }
+  }
+  return {
+    name: att.name,
+    type: att.type,
+    size: att.size,
+    previewUrl: att.previewUrl || null
+  }
+}
+
+function renderattachmentpill(att) {
+  const icon = attachmenticonpath(att)
+  const label = escapehtml(att.name || 'file')
+  return `<div class="msg-attachment-pill"><img class="attachment-pill-icon" src="${icon}" alt=""> <span>${label}</span></div>`
+}
+
+function escapehtml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 // render attachment preview chips at top of chat input --------------------
@@ -330,43 +522,35 @@ function renderattachmentspreview() {
   currentattachments.forEach((att, index) => {
     const chip = document.createElement('div')
     chip.className = 'attachment-chip'
-    chip.title = att.name
+    const thumburl = att.previewUrl || (isimageattachment(att) && att.path ? vaultpreviewurl(att.path) : null)
+    if (isimageattachment(att) && thumburl) chip.classList.add('has-thumb')
+    chip.title = att.path ? `${att.name} (${att.path})` : att.name
 
-    if (att.type === 'image' && att.previewUrl) {
+    if (isimageattachment(att) && thumburl) {
       const img = document.createElement('img')
-      img.src = att.previewUrl
+      img.src = thumburl
       img.className = 'attachment-thumb'
       img.alt = att.name
       chip.appendChild(img)
     } else {
-      const iconbox = document.createElement('div')
-      iconbox.className = 'attachment-icon-box'
+      const icon = document.createElement('img')
+      icon.className = 'attachment-type-icon'
+      icon.src = attachmenticonpath(att)
+      icon.alt = ''
 
-      const svgicon = document.createElement('div')
-      if (att.type === 'reference') {
-        svgicon.innerHTML = referenceiconsvg(att.refKind)
-      } else if (att.type === 'pdf') {
-        svgicon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ef4444" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="9" y1="15" x2="15" y2="15"></line></svg>'
-      } else {
-        svgicon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#10b981" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>'
-      }
+      const meta = document.createElement('div')
+      meta.className = 'attachment-meta'
 
       const badge = document.createElement('span')
       badge.className = 'attachment-badge'
-      if (att.type === 'reference') {
-        badge.textContent = referencebadge(att.refKind)
-      } else {
-        badge.textContent = att.type === 'pdf' ? 'pdf' : 'sound'
-      }
+      badge.textContent = attachmenttypelabel(att)
 
       const name = document.createElement('span')
       name.className = 'attachment-name'
       name.textContent = att.name
 
-      iconbox.appendChild(svgicon)
-      iconbox.appendChild(badge)
-      iconbox.appendChild(name)
-      chip.appendChild(iconbox)
+      meta.append(badge, name)
+      chip.append(icon, meta)
     }
 
     const removebtn = document.createElement('button')
@@ -379,6 +563,7 @@ function renderattachmentspreview() {
       e.stopPropagation()
       currentattachments.splice(index, 1)
       renderattachmentspreview()
+      scheduledraftsave()
     })
 
     chip.appendChild(removebtn)
@@ -387,10 +572,19 @@ function renderattachmentspreview() {
 }
 
 // auto resize textarea on input --------------------
-function resizeaiinput() {
+export function resizeaiinput() {
   if (!aiinput) return
-  aiinput.style.height = 'auto'
-  aiinput.style.height = `${Math.min(Math.max(aiinput.scrollHeight, 48), 160)}px`
+  const maxh = 140
+  const line = parseFloat(getComputedStyle(aiinput).lineHeight)
+  const minh = Number.isFinite(line) && line > 0 ? Math.ceil(line) : 20
+  // empty field: never trust scrollHeight (often huge before first layout) --------------------
+  if (!aiinput.value) {
+    aiinput.style.height = `${minh}px`
+    return
+  }
+  aiinput.style.height = '0px'
+  const next = Math.min(Math.max(aiinput.scrollHeight, minh), maxh)
+  aiinput.style.height = `${next}px`
 }
 
 // update ai assistant name and avatar from server --------------------
@@ -429,7 +623,7 @@ export async function loadaiinfo() {
       }
       const ctxaskai = document.getElementById('ctx-item-ask-ai')
       if (ctxaskai) {
-        ctxaskai.innerHTML = `<img class="btn-icon-img" src="/resources/icons/files/text.png" alt="ask"> ask ${state.ainame}`
+        ctxaskai.innerHTML = `<img class="btn-icon-img" src="/resources/icons/general/ask.png" alt="ask"> ask ${state.ainame}`
       }
       updatetogglebuttons()
     }
@@ -438,192 +632,185 @@ export async function loadaiinfo() {
   }
 }
 
+const tooliconfallback = '/resources/icons/general/tool.png'
+const tooliconmap = {
+  file_search: '/resources/icons/tools/tool-file-search.png',
+  web_search: '/resources/icons/tools/tool-web-search.png',
+  web_read_page: '/resources/icons/tools/tool-web-read-page.png',
+  youtube_video: '/resources/icons/tools/tool-youtube-video.png',
+  textfile_read: '/resources/icons/tools/tool-textfile-read.png',
+  file_analyze: '/resources/icons/tools/tool-file-analyze.png',
+  file_open_for_user: '/resources/icons/tools/tool-file-open-for-user.png',
+  textfile_create: '/resources/icons/tools/tool-textfile-create.png',
+  file_move: '/resources/icons/tools/tool-file-move.png',
+  file_copy: '/resources/icons/tools/tool-file-copy.png',
+  file_delete: '/resources/icons/tools/tool-file-delete.png',
+  folder_delete: '/resources/icons/tools/tool-folder-delete.png',
+  archive_extract: '/resources/icons/tools/tool-archive-extract.png',
+  download: '/resources/icons/tools/tool-download.png',
+  api_request: '/resources/icons/tools/tool-api-request.png',
+  textfile_edit_diff: '/resources/icons/tools/tool-textfile-edit-diff.png',
+  textfile_history: '/resources/icons/tools/tool-textfile-history.png'
+}
+
+export function gettoolicon(name) {
+  return tooliconmap[name] || tooliconfallback
+}
+
+// warm tool icons into the browser cache so status badges never flash blank --------------------
+function preloadtoolicons() {
+  const urls = new Set([
+    tooliconfallback,
+    '/resources/icons/general/thought.png',
+    ...Object.values(tooliconmap)
+  ])
+  for (const src of urls) {
+    const img = new Image()
+    img.decoding = 'async'
+    img.src = src
+  }
+}
+preloadtoolicons()
+
 // format visual tool item label and icon --------------------
 export function formattoolmeta(call) {
   const name = call.name
   const args = call.args || {}
+  const icon = gettoolicon(name)
 
-  if (name === 'note_outline') {
-    const filename = args.note_id || 'note'
-    return {
-      icon: '📑',
-      label: `outline of ${filename}`,
-      colorclass: 'tool-badge-view'
-    }
-  }
-
-  if (name === 'file_outline') {
+  if (name === 'textfile_read') {
     const filename = args.path || args.file_path || args.note_id || 'file'
-    return {
-      icon: '📑',
-      label: `outline of ${filename}`,
-      colorclass: 'tool-badge-view'
+    if (String(args.mode || '').toLowerCase() === 'outline') {
+      return { icon, label: `outline of ${filename}`, colorclass: 'tool-badge-view' }
     }
-  }
-
-  if (name === 'file_open') {
-    const filename = args.path || args.file_path || args.note_id || 'file'
     const sectioninfo = args.heading ? ` (${args.heading})` : (args.start_line ? ` (lines ${args.start_line}+)` : '')
-    return {
-      icon: '👁',
-      label: `viewed ${filename}${sectioninfo}`,
-      colorclass: 'tool-badge-view'
-    }
+    return { icon, label: `read ${filename}${sectioninfo}`, colorclass: 'tool-badge-view' }
   }
 
-  if (name === 'file_edit_diff') {
+  if (name === 'file_analyze') {
+    const filename = args.path || args.file_path || args.note_id || 'file'
+    if (String(args.mode || '').toLowerCase() === 'metadata') {
+      return { icon, label: `metadata ${filename}`, colorclass: 'tool-badge-view' }
+    }
+    return { icon, label: `analyzed ${filename}`, colorclass: 'tool-badge-view' }
+  }
+
+  if (name === 'textfile_edit_diff') {
     const filename = args.path || args.file_path || args.note_id || 'file'
     const count = Array.isArray(args.edits) ? ` (${args.edits.length} edits)` : ''
-    return {
-      icon: '✏️',
-      label: `edited ${filename}${count}`,
-      colorclass: 'tool-badge-edit'
-    }
+    return { icon, label: `edited ${filename}${count}`, colorclass: 'tool-badge-edit' }
   }
 
-  if (name === 'file_create') {
+  if (name === 'textfile_create') {
     const filename = args.path || args.filename || args.title || args.note_id || 'file'
-    return {
-      icon: '📝',
-      label: `created ${filename}`,
-      colorclass: 'tool-badge-create'
-    }
+    return { icon, label: `created ${filename}`, colorclass: 'tool-badge-create' }
   }
 
   if (name === 'file_open_for_user') {
     const filename = args.path || args.file_path || args.note_id || 'file'
-    return {
-      icon: '📂',
-      label: `opened ${filename}`,
-      colorclass: 'tool-badge-view'
-    }
+    return { icon, label: `opened ${filename}`, colorclass: 'tool-badge-view' }
   }
 
   if (name === 'file_search') {
+    const recent = args.recent === true || args.recent === 'true' || args.recent === 1 || args.recent === '1'
+    if (recent) return { icon, label: 'checked recent files', colorclass: 'tool-badge-search' }
     const query = args.query ? `"${args.query}"` : 'vault'
-    return {
-      icon: '🔍',
-      label: `searched ${query}`,
-      colorclass: 'tool-badge-search'
-    }
+    return { icon, label: `searched ${query}`, colorclass: 'tool-badge-search' }
   }
 
   if (name === 'web_search') {
-    const query = args.query ? `"${args.query}"` : 'web'
+    const query = args.query ? `"${args.query}"` : ''
+    const news = args.news === true || args.news === 'true' || args.news === 1 || args.news === '1'
     return {
-      icon: '🌐',
-      label: `web search ${query}`,
+      icon,
+      label: news
+        ? (query ? `searched news for ${query}` : 'searched news')
+        : (query ? `searched web for ${query}` : 'searched web'),
       colorclass: 'tool-badge-search'
     }
   }
 
   if (name === 'web_read_page') {
-    let host = 'page'
-    if (args.url) {
-      try {
-        host = new URL(args.url).hostname
-      } catch {
-        host = 'page'
-      }
-    }
-    return {
-      icon: '📰',
-      label: `read ${host}`,
-      colorclass: 'tool-badge-search'
-    }
+    const target = String(args.url || '').trim() || 'page'
+    return { icon, label: `read ${target}`, colorclass: 'tool-badge-search' }
   }
 
   if (name === 'youtube_video') {
     const action = String(args.action || 'info').toLowerCase()
     if (action === 'download') {
+      const media = String(args.media || 'audio').toLowerCase()
       return {
-        icon: '⬇️',
-        label: 'saved youtube audio',
+        icon,
+        label: media === 'video' ? 'downloaded youtube video' : 'downloaded youtube audio',
         colorclass: 'tool-badge-create'
       }
     }
     if (action === 'transcript') {
+      const detail = String(args.detail || 'regular').toLowerCase() === 'full' ? 'full' : 'regular'
       return {
-        icon: '🎬',
-        label: 'youtube transcript',
+        icon,
+        label: detail === 'full' ? 'fetched youtube transcript (full)' : 'fetched youtube transcript',
         colorclass: 'tool-badge-search'
       }
     }
-    return {
-      icon: '🎬',
-      label: 'youtube info',
-      colorclass: 'tool-badge-search'
-    }
+    return { icon, label: 'checked youtube info', colorclass: 'tool-badge-search' }
   }
 
-  if (name === 'file_list_recent') {
-    return {
-      icon: '⏱',
-      label: 'checked recent files',
-      colorclass: 'tool-badge-search'
-    }
-  }
-
-  if (name === 'file_history') {
+  if (name === 'textfile_history') {
     const filename = args.path || args.file_path || args.note_id || 'file'
-    return {
-      icon: '📜',
-      label: `checked history of ${filename}`,
-      colorclass: 'tool-badge-view'
-    }
+    return { icon, label: `checked history of ${filename}`, colorclass: 'tool-badge-view' }
   }
 
   if (name === 'file_move') {
     const src = args.source || 'item'
     const dest = args.destination || 'destination'
-    return {
-      icon: '🚚',
-      label: `moved ${src} --> ${dest}`,
-      colorclass: 'tool-badge-edit'
-    }
+    return { icon, label: `moved ${src} --> ${dest}`, colorclass: 'tool-badge-edit' }
   }
 
   if (name === 'file_copy') {
     const src = args.source || 'item'
     const dest = args.destination || 'destination'
-    return {
-      icon: '📋',
-      label: `copied ${src} --> ${dest}`,
-      colorclass: 'tool-badge-edit'
-    }
+    return { icon, label: `copied ${src} --> ${dest}`, colorclass: 'tool-badge-edit' }
   }
 
   if (name === 'file_delete') {
     const filename = args.path || args.file_path || args.note_id || 'file'
-    return {
-      icon: '🗑️',
-      label: `deleted ${filename}`,
-      colorclass: 'tool-badge-delete'
-    }
+    return { icon, label: `deleted ${filename}`, colorclass: 'tool-badge-delete' }
   }
 
   if (name === 'folder_delete') {
     const foldername = args.folder_path || 'folder'
+    return { icon, label: `deleted folder ${foldername}`, colorclass: 'tool-badge-delete' }
+  }
+
+  if (name === 'archive_extract') {
+    const filename = (args.path || args.file_path || 'archive').split('/').pop()
+    const dest = args.destination ? ` --> ${String(args.destination).split('/').pop()}` : ''
+    return { icon, label: `extracted ${filename}${dest}`, colorclass: 'tool-badge-create' }
+  }
+
+  if (name === 'download') {
+    const dest = args.destination || args.path || ''
+    const short = dest ? String(dest).split('/').pop() : ''
+    const kind = String(args.kind || args.mode || '').toLowerCase()
+    if (kind === 'git' || kind === 'clone' || /github\.com|gitlab\.com|bitbucket\.org|codeberg\.org|\.git(\b|$)/i.test(String(args.url || ''))) {
+      return { icon, label: short ? `cloned ${short}` : 'cloned repo', colorclass: 'tool-badge-create' }
+    }
+    return { icon, label: short ? `downloaded ${short}` : 'downloaded file', colorclass: 'tool-badge-create' }
+  }
+
+  if (name === 'api_request') {
+    const method = String(args.method || 'GET').toUpperCase()
+    const target = String(args.url || '').trim()
+    const status = args.status != null ? ` ${args.status}` : ''
     return {
-      icon: '🗑️',
-      label: `deleted folder ${foldername}`,
-      colorclass: 'tool-badge-delete'
+      icon,
+      label: target ? `${method}${status} ${target}` : `${method} request`,
+      colorclass: 'tool-badge-search'
     }
   }
 
-  if (name === 'user_profile_update') {
-    return {
-      icon: '👤',
-      label: `updated user profile for ${args.user_id || 'user'}`,
-      colorclass: 'tool-badge-edit'
-    }
-  }
-
-  return {
-    icon: '⚡',
-    label: `used ${name}`,
-    colorclass: 'tool-badge-generic'
-  }
+  return { icon, label: `used ${name}`, colorclass: 'tool-badge-generic' }
 }
 
 // format concise gray status text for non-admin tool execution --------------------
@@ -631,44 +818,51 @@ export function formatnonadmintooltext(call) {
   const name = call.name
   const args = call.args || {}
 
-  if (name === 'file_create') {
+  if (name === 'textfile_create') {
     const filename = args.path || args.filename || args.title || args.note_id
     return filename && filename !== 'file' ? `creating ${filename}...` : 'creating a file...'
   }
-  if (name === 'file_open') {
+  if (name === 'textfile_read') {
     const filename = args.path || args.file_path || args.note_id
+    if (String(args.mode || '').toLowerCase() === 'outline') {
+      return filename && filename !== 'file' ? `reading outline of ${filename}...` : 'checking outline...'
+    }
     return filename && filename !== 'file' ? `reading ${filename}...` : 'reading a file...'
   }
-  if (name === 'file_outline') {
+  if (name === 'file_analyze') {
     const filename = args.path || args.file_path || args.note_id
-    return filename && filename !== 'file' ? `reading outline of ${filename}...` : 'checking outline...'
+    if (String(args.mode || '').toLowerCase() === 'metadata') {
+      return filename && filename !== 'file' ? `checking ${filename}...` : 'checking file...'
+    }
+    return filename && filename !== 'file' ? `analyzing ${filename}...` : 'analyzing file...'
   }
   if (name === 'file_search') {
+    const recent = args.recent === true || args.recent === 'true' || args.recent === 1 || args.recent === '1'
+    if (recent) return 'checking recent files...'
     return args.query ? `searching files for "${args.query}"...` : 'searching files...'
   }
   if (name === 'web_search') {
+    const news = args.news === true || args.news === 'true' || args.news === 1 || args.news === '1'
+    if (news) return args.query ? `searching news for "${args.query}"...` : 'searching news...'
     return args.query ? `searching web for "${args.query}"...` : 'searching web...'
   }
   if (name === 'web_read_page') {
-    if (args.url) {
-      try {
-        return `reading ${new URL(args.url).hostname}...`
-      } catch {
-        return 'reading web page...'
-      }
-    }
-    return 'reading web page...'
+    const target = String(args.url || '').trim()
+    return target ? `reading ${target}...` : 'reading web page...'
   }
   if (name === 'youtube_video') {
     const action = String(args.action || 'info').toLowerCase()
-    if (action === 'transcript') return 'fetching youtube transcript...'
+    if (action === 'transcript') {
+      const detail = String(args.detail || 'regular').toLowerCase() === 'full' ? 'full' : 'regular'
+      return detail === 'full' ? 'fetching full youtube transcript...' : 'fetching youtube transcript...'
+    }
     if (action === 'download') {
       const media = String(args.media || 'audio').toLowerCase()
       return media === 'video' ? 'downloading youtube video...' : 'downloading youtube audio...'
     }
     return 'reading youtube details...'
   }
-  if (name === 'file_edit_diff') {
+  if (name === 'textfile_edit_diff') {
     const filename = args.path || args.file_path || args.note_id
     return filename && filename !== 'file' ? `editing ${filename}...` : 'editing file...'
   }
@@ -676,10 +870,7 @@ export function formatnonadmintooltext(call) {
     const filename = args.path || args.file_path || args.note_id
     return filename && filename !== 'file' ? `opening ${filename}...` : 'opening file...'
   }
-  if (name === 'file_list_recent') {
-    return 'checking recent files...'
-  }
-  if (name === 'file_history') {
+  if (name === 'textfile_history') {
     const filename = args.path || args.file_path || args.note_id
     return filename && filename !== 'file' ? `reading history of ${filename}...` : 'checking file history...'
   }
@@ -699,10 +890,24 @@ export function formatnonadmintooltext(call) {
     const foldername = args.folder_path || 'folder'
     return `deleting folder ${foldername}...`
   }
-
-  if (name === 'user_profile_update') {
-    return 'updating profile...'
+  if (name === 'archive_extract') {
+    const filename = args.path || args.file_path || 'archive'
+    return `extracting ${filename}...`
   }
+  if (name === 'download') {
+    const mode = String(args.mode || 'auto').toLowerCase()
+    const dest = args.destination || args.path || ''
+    if (mode === 'git' || mode === 'clone' || /github\.com|gitlab\.com|bitbucket\.org|codeberg\.org|\.git(\b|$)/i.test(String(args.url || ''))) {
+      return dest ? `cloning into ${dest}...` : 'cloning repo...'
+    }
+    return dest ? `downloading to ${dest}...` : 'downloading file...'
+  }
+  if (name === 'api_request') {
+    const method = String(args.method || 'GET').toUpperCase()
+    const target = String(args.url || '').trim()
+    return target ? `${method} ${target}...` : `${method} request...`
+  }
+
   return 'working...'
 }
 
@@ -730,6 +935,41 @@ function shortreplylabel(text, role, max = 42) {
   if (!raw) return `reply to ${who}`
   const clip = raw.length > max ? `${raw.slice(0, max - 1)}…` : raw
   return `reply: ${clip}`
+}
+
+// quiz or choice chips under an assistant bubble --------------------
+function buildoptionsrow(options, selectedanswer = null) {
+  const list = (options || []).map((o) => String(o).trim()).filter(Boolean)
+  if (!list.length) return null
+
+  const optionsrow = document.createElement('div')
+  optionsrow.className = 'ai-options-row'
+  const answered = selectedanswer != null && list.some((o) => o === selectedanswer)
+
+  for (const optiontext of list) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'ai-option-btn'
+    btn.textContent = optiontext
+
+    if (answered) {
+      btn.classList.add('disabled')
+      if (optiontext === selectedanswer) btn.classList.add('selected')
+    } else {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        const allbtns = optionsrow.querySelectorAll('.ai-option-btn')
+        allbtns.forEach((b) => b.classList.add('disabled'))
+        btn.classList.add('selected')
+        senduserprompt(optiontext)
+      })
+    }
+
+    optionsrow.appendChild(btn)
+  }
+
+  return optionsrow
 }
 
 export function appendcopyactions(msgel, texttocopy, replyopts = null) {
@@ -788,6 +1028,56 @@ export function appendcopyactions(msgel, texttocopy, replyopts = null) {
   })
 }
 
+const copybtniconsvg = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`
+
+function makeblockcopybutton(label, gettext) {
+  const actions = document.createElement('div')
+  actions.className = 'chat-block-actions'
+
+  const btn = document.createElement('button')
+  btn.type = 'button'
+  btn.className = 'btn-copy-code'
+  btn.title = label
+  const idle = `${copybtniconsvg} <span>${label}</span>`
+  btn.innerHTML = idle
+
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(gettext())
+      btn.innerHTML = `<span class="copy-success-text">copied</span>`
+      setTimeout(() => {
+        btn.innerHTML = idle
+      }, 1000)
+    } catch (err) {
+      console.error(`failed to ${label}`, err)
+    }
+  })
+
+  actions.appendChild(btn)
+  return actions
+}
+
+// turn a rendered chat table back into gfm pipe markdown --------------------
+function htmltabletomarkdown(table) {
+  const rows = [...table.querySelectorAll('tr')].map(tr =>
+    [...tr.querySelectorAll('th, td')].map(cell => {
+      const text = (cell.textContent || '').replace(/\s+/g, ' ').trim().replace(/\|/g, '\\|')
+      return text || ' '
+    })
+  ).filter(cells => cells.length > 0)
+  if (!rows.length) return ''
+
+  const width = Math.max(...rows.map(r => r.length))
+  const pad = (cells) => {
+    while (cells.length < width) cells.push(' ')
+    return cells
+  }
+  const lines = rows.map(cells => `| ${pad(cells).join(' | ')} |`)
+  const divider = `| ${Array(width).fill('---').join(' | ')} |`
+  return [lines[0], divider, ...lines.slice(1)].join('\n')
+}
+
 // attach copy button under code blocks and latex math in chat --------------------
 export function attachblockcopyactions(bubbleel) {
   if (!bubbleel) return
@@ -798,36 +1088,13 @@ export function attachblockcopyactions(bubbleel) {
     if (pre.dataset.hasCopy) return
     pre.dataset.hasCopy = 'true'
 
-    const actions = document.createElement('div')
-    actions.className = 'chat-block-actions'
-
-    const btn = document.createElement('button')
-    btn.type = 'button'
-    btn.className = 'btn-copy-code'
-    btn.title = 'copy code'
-    btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> <span>copy</span>`
-
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation()
+    const actions = makeblockcopybutton('copy', () => {
       const codeel = pre.querySelector('code')
       const code = codeel ? codeel.textContent : pre.textContent
       const lang = codeel?.className?.match(/language-(\S+)/)?.[1]?.toLowerCase()
-      let copytext = code
-      if (lang === 'mermaid') {
-        copytext = formatmermaidforpaste(code) || code
-      }
-      try {
-        await navigator.clipboard.writeText(copytext)
-        btn.innerHTML = `<span class="copy-success-text">copied</span>`
-        setTimeout(() => {
-          btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> <span>copy</span>`
-        }, 1000)
-      } catch (err) {
-        console.error('failed to copy code', err)
-      }
+      if (lang === 'mermaid') return formatmermaidforpaste(code) || code
+      return code
     })
-
-    actions.appendChild(btn)
     pre.insertAdjacentElement('afterend', actions)
   })
 
@@ -845,31 +1112,14 @@ export function attachblockcopyactions(bubbleel) {
 
     const ann = mb.querySelector('annotation[encoding="application/x-tex"]')
     const latextext = ann ? ann.textContent.trim() : mb.textContent.trim()
+    mb.insertAdjacentElement('afterend', makeblockcopybutton('copy latex', () => latextext))
+  })
 
-    const actions = document.createElement('div')
-    actions.className = 'chat-block-actions'
-
-    const btn = document.createElement('button')
-    btn.type = 'button'
-    btn.className = 'btn-copy-code'
-    btn.title = 'copy latex'
-    btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> <span>copy latex</span>`
-
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation()
-      try {
-        await navigator.clipboard.writeText(latextext)
-        btn.innerHTML = `<span class="copy-success-text">copied</span>`
-        setTimeout(() => {
-          btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> <span>copy latex</span>`
-        }, 1000)
-      } catch (err) {
-        console.error('failed to copy latex', err)
-      }
-    })
-
-    actions.appendChild(btn)
-    mb.insertAdjacentElement('afterend', actions)
+  // attach copy button under markdown tables --------------------
+  bubbleel.querySelectorAll('table').forEach(table => {
+    if (table.dataset.hasCopy) return
+    table.dataset.hasCopy = 'true'
+    table.insertAdjacentElement('afterend', makeblockcopybutton('copy table', () => htmltabletomarkdown(table)))
   })
 }
 
@@ -881,27 +1131,45 @@ function applychatmarkdownto(el, text) {
   enhancechatcites(el).catch(() => {})
 }
 
-function shouldshowactivityspinner(label) {
+function isactivityworking(label, done = false) {
+  if (done) return false
   const t = String(label || 'thinking...').trim().toLowerCase()
   if (!t || t === 'thinking...' || t === 'thinking' || t === 'reconnecting...') return false
   if (t.startsWith('thinking')) return false
   return true
 }
 
-function buildactivitystatusel(label) {
+function buildactivitystatusel(label, toolname = '', done = false) {
   const row = document.createElement('span')
   row.className = 'ai-activity-status-inner'
+  const working = isactivityworking(label, done)
+  const icon = document.createElement('img')
+  icon.className = working ? 'ai-activity-icon is-working' : 'ai-activity-icon'
+  icon.alt = ''
+  icon.src = toolname
+    ? gettoolicon(toolname)
+    : (working ? tooliconfallback : '/resources/icons/general/thought.png')
+  row.appendChild(icon)
   const text = document.createElement('span')
   text.className = 'ai-activity-label'
   text.textContent = label || 'thinking...'
   row.appendChild(text)
-  if (shouldshowactivityspinner(label)) {
-    const spinner = document.createElement('span')
-    spinner.className = 'ai-activity-spinner'
-    spinner.setAttribute('aria-hidden', 'true')
-    row.appendChild(spinner)
-  }
   return row
+}
+
+function appenddonetoolactivity(call, beforeel = null) {
+  if (!aimessages || !call?.name) return null
+  const meta = formattoolmeta(call)
+  const el = document.createElement('div')
+  el.className = 'ai-activity-status is-done'
+  el.dataset.toolName = call.name
+  el.appendChild(buildactivitystatusel(meta.label, call.name, true))
+  if (beforeel && beforeel.parentNode === aimessages) {
+    aimessages.insertBefore(el, beforeel)
+  } else {
+    aimessages.appendChild(el)
+  }
+  return el
 }
 
 function setagentinputenabled(enabled) {
@@ -977,7 +1245,7 @@ export async function senduserprompt(text) {
   conversationlog.push({
     role: 'user',
     prompt,
-    attachments: attached.map(a => ({ name: a.name, type: a.type, size: a.size })),
+    attachments: attached.map(mapattachmentforlog),
     active_note_id: state.activenoteid,
     open_tabs: [...state.opentabs],
     timestamp: new Date().toISOString()
@@ -998,14 +1266,12 @@ export async function senduserprompt(text) {
   if (attached.length > 0) {
     attachmenthtml = '<div class="msg-attachments">'
     for (const a of attached) {
-      if (a.type === 'reference') {
-        attachmenthtml += renderreferencepill(a)
-      } else if (a.type === 'image' && a.previewUrl) {
-        attachmenthtml += `<img src="${a.previewUrl}" class="msg-attachment-img" alt="${a.name}" title="${a.name}">`
-      } else if (a.type === 'audio') {
-        attachmenthtml += `<div class="msg-attachment-pill"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#10b981" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg> <span>${a.name}</span></div>`
+      const thumburl = a.previewUrl || (isimageattachment(a) && a.path ? vaultpreviewurl(a.path) : null)
+      if (isimageattachment(a) && thumburl) {
+        const title = a.path ? `${a.name} (${a.path})` : a.name
+        attachmenthtml += `<img src="${thumburl}" class="msg-attachment-img" alt="${escapehtml(a.name)}" title="${escapehtml(title)}">`
       } else {
-        attachmenthtml += `<div class="msg-attachment-pill"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#ef4444" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg> <span>${a.name}</span></div>`
+        attachmenthtml += renderattachmentpill(a)
       }
     }
     attachmenthtml += '</div>'
@@ -1033,32 +1299,62 @@ export async function senduserprompt(text) {
   } : null)
   aimessages.appendChild(usermsg)
 
-  // render active live status placeholder --------------------
-  let statusmsg = document.createElement('div')
-  statusmsg.className = 'ai-activity-status'
-  statusmsg.appendChild(buildactivitystatusel('thinking...'))
-  aimessages.appendChild(statusmsg)
-  aimessages.scrollTop = aimessages.scrollHeight
+  // live status line plus finished tool lines left in chat --------------------
+  let livestatusel = null
+  let livetoolname = ''
 
-  function ensurestatusmsg() {
-    if (statusmsg && statusmsg.parentNode) return
-    statusmsg = document.createElement('div')
-    statusmsg.className = 'ai-activity-status'
-    statusmsg.appendChild(buildactivitystatusel('thinking...'))
-    aimessages.appendChild(statusmsg)
+  function clearlivestatus() {
+    if (livestatusel && livestatusel.parentNode) {
+      livestatusel.remove()
+    }
+    livestatusel = null
+    livetoolname = ''
   }
 
-  function updatestatus(statustext) {
-    ensurestatusmsg()
-    statusmsg.replaceChildren(buildactivitystatusel(statustext))
+  function setlivestatus(statustext, toolname = '') {
+    if (!livestatusel || !livestatusel.parentNode) {
+      livestatusel = document.createElement('div')
+      livestatusel.className = 'ai-activity-status is-live'
+      aimessages.appendChild(livestatusel)
+    }
+    livetoolname = toolname || ''
+    livestatusel.classList.add('is-live')
+    livestatusel.classList.remove('is-done')
+    livestatusel.replaceChildren(buildactivitystatusel(statustext, toolname, false))
     aimessages.scrollTop = aimessages.scrollHeight
   }
 
-  function removestatus() {
-    if (statusmsg && statusmsg.parentNode) {
-      statusmsg.remove()
+  function committoolactivity(call) {
+    if (!call?.name) return
+    const meta = formattoolmeta(call)
+    if (livestatusel && livestatusel.parentNode && livetoolname === call.name) {
+      livestatusel.classList.remove('is-live')
+      livestatusel.classList.add('is-done')
+      livestatusel.dataset.toolName = call.name
+      livestatusel.replaceChildren(buildactivitystatusel(meta.label, call.name, true))
+      livestatusel = null
+      livetoolname = ''
+    } else {
+      clearlivestatus()
+      appenddonetoolactivity(call)
     }
+    aimessages.scrollTop = aimessages.scrollHeight
   }
+
+  function updatestatus(statustext, toolname = '') {
+    // new tool while another is still live --> leave the previous one as past tense --------------------
+    if (toolname && livetoolname && livetoolname !== toolname && livestatusel) {
+      committoolactivity({ name: livetoolname, args: {} })
+    }
+    setlivestatus(statustext, toolname)
+  }
+
+  function removestatus() {
+    clearlivestatus()
+  }
+
+  setlivestatus('thinking...')
+  aimessages.scrollTop = aimessages.scrollHeight
 
   try {
     const token = localStorage.getItem('mushnote_token')
@@ -1082,7 +1378,6 @@ export async function senduserprompt(text) {
       if (chatattempt > 0) {
         updatestatus('reconnecting...')
         await new Promise((r) => setTimeout(r, 1200))
-        ensurestatusmsg()
         updatestatus('thinking...')
       }
 
@@ -1175,20 +1470,28 @@ export async function senduserprompt(text) {
           continue
         }
 
+        let paintedtoolstatus = false
+
         if (eventname === 'status') {
           let statustext = parsed.status || parsed.text || 'thinking...'
+          let toolname = parsed.tool || ''
           if (statustext.startsWith('running ') || statustext.startsWith('using ')) {
-            const toolname = statustext.replace(/^(running|using)\s+/, '').replace(/\.\.\.$/, '')
+            toolname = toolname || statustext.replace(/^(running|using)\s+/, '').replace(/\.\.\.$/, '')
             statustext = formatnonadmintooltext({ name: toolname, args: {} })
           }
-          liveontoolstatus = statustext !== 'thinking...' && !/^thinking\b/i.test(statustext)
-          updatestatus(statustext)
+          const isthinking = statustext === 'thinking...' || /^thinking\b/i.test(statustext)
+          // keep finished and in-progress tool lines while the model thinks between rounds --------------------
+          if (isthinking && (liveontoolstatus || livetoolname) && !toolname) continue
+          liveontoolstatus = Boolean(toolname) || !isthinking
+          updatestatus(statustext, toolname)
+          paintedtoolstatus = Boolean(toolname) || liveontoolstatus
         } else if (eventname === 'thought') {
-          if (!liveontoolstatus) {
+          if (!liveontoolstatus && !livetoolname) {
             updatestatus('thinking...')
           }
         } else if (eventname === 'token') {
           removestatus()
+          liveontoolstatus = false
           if (!agentmsg) {
             agentmsg = document.createElement('div')
             agentmsg.className = 'ai-msg agent'
@@ -1208,11 +1511,21 @@ export async function senduserprompt(text) {
           }
           rawreplytext = ''
           pendingreplytext = ''
-          liveontoolstatus = false
+          // leave this tool in chat as a past-tense line --------------------
+          if (parsed?.name) {
+            committoolactivity(parsed)
+            liveontoolstatus = true
+            paintedtoolstatus = true
+          }
         } else if (eventname === 'done') {
           donedata = parsed
         } else if (eventname === 'error') {
           throw new Error(parsed.error || 'request failed')
+        }
+
+        // let the browser paint tool badges when several sse events arrive in one chunk --------------------
+        if (paintedtoolstatus) {
+          await new Promise((resolve) => requestAnimationFrame(resolve))
         }
       }
     }
@@ -1242,7 +1555,7 @@ export async function senduserprompt(text) {
           const sourcetouched = finaltools.some((call) => {
             const toolpath = call.args?.path || call.args?.file_path || call.args?.note_id
             if (!toolpath) return false
-            if (call.name !== 'file_edit_diff' && call.name !== 'file_create') return false
+            if (call.name !== 'textfile_edit_diff' && call.name !== 'textfile_create') return false
             return isnoteidmatch(toolpath, previewtarget)
           })
           if (sourcetouched) {
@@ -1253,8 +1566,9 @@ export async function senduserprompt(text) {
 
       // if ai generated a new file or opened a file for user open it in a new tab --------------------
       for (const call of finaltools) {
-        const isnewfile = call.name === 'file_create'
-        const isuseropen = call.name === 'file_open_for_user' || (call.name === 'file_open' && call.args?.open_in_tab)
+        const isnewfile = call.name === 'textfile_create'
+        const isuseropen = call.name === 'file_open_for_user'
+          || (call.name === 'textfile_read' && call.args?.open_in_tab)
         let targetfileid = call.args?.path || call.args?.file_path || call.args?.note_id
         if (call.name === 'youtube_video' && String(call.args?.action || '').toLowerCase() === 'download') {
           try {
@@ -1264,7 +1578,7 @@ export async function senduserprompt(text) {
             }
           } catch {}
         }
-        if (!targetfileid && call.name === 'file_create') {
+        if (!targetfileid && call.name === 'textfile_create') {
           // fallback to parse file id from output --------------------
           const match = String(call.output || '').match(/\[(.*?)\]/)
           if (match) targetfileid = match[1]
@@ -1367,34 +1681,8 @@ export async function senduserprompt(text) {
     }
 
     // render interactive options chips if present --------------------
-    if (data.options && data.options.length > 0) {
-      const optionsrow = document.createElement('div')
-      optionsrow.className = 'ai-options-row'
-
-      for (const optiontext of data.options) {
-        const btn = document.createElement('button')
-        btn.type = 'button'
-        btn.className = 'ai-option-btn'
-        btn.textContent = optiontext
-
-        btn.addEventListener('click', (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-
-          // disable all sibling buttons and highlight clicked --------------------
-          const allbtns = optionsrow.querySelectorAll('.ai-option-btn')
-          allbtns.forEach(b => b.classList.add('disabled'))
-          btn.classList.add('selected')
-
-          // auto send selected answer --------------------
-          senduserprompt(optiontext)
-        })
-
-        optionsrow.appendChild(btn)
-      }
-
-      agentmsg.appendChild(optionsrow)
-    }
+    const optionsrow = buildoptionsrow(data.options || [])
+    if (optionsrow) agentmsg.appendChild(optionsrow)
 
     const assistantlogindex = conversationlog.length
     appendcopyactions(agentmsg, finalreply || '', finalreply ? {
@@ -1497,13 +1785,11 @@ export async function senduserprompt(text) {
 
     const errmsg = document.createElement('div')
     errmsg.className = 'ai-msg agent'
-    if (issoft) {
-      errmsg.innerHTML = `<div class="msg-bubble" style="color:#777777;border-color:#1c1c1c;background-color:#080808">${displayerr}</div>`
-    } else if (ishard) {
-      errmsg.innerHTML = `<div class="msg-bubble" style="color:#ffaa00;border-color:#3d2f0a;background-color:#191408">${displayerr}</div>`
-    } else {
-      errmsg.innerHTML = `<div class="msg-bubble" style="color:#ff6b6b;border-color:#4a1515;background-color:#140505">${displayerr}</div>`
-    }
+    const statusicon = issoft
+      ? '/resources/icons/general/warning.png'
+      : '/resources/icons/general/error.png'
+    const bubbleclass = issoft ? 'ai-status-soft' : (ishard ? 'ai-status-hard' : 'ai-status-error')
+    errmsg.innerHTML = `<div class="msg-bubble ${bubbleclass}"><img class="ai-status-icon" src="${statusicon}" alt=""> <span>${displayerr}</span></div>`
     appendcopyactions(errmsg, displayerr)
     aimessages.appendChild(errmsg)
   } finally {
@@ -1529,6 +1815,10 @@ export function getconversationpersiststate() {
     display_log: conversationlog.map((e) => ({ ...e })),
     model: lastagentmodel || null,
     last_system_prompt_meta: lastsystempromptmeta,
+    draft: {
+      text: aiinput ? aiinput.value : '',
+      attachments: clonedraftattachments(currentattachments),
+    },
   }
 }
 
@@ -1549,15 +1839,18 @@ export function replayconversationlogtoui() {
         const attwrap = document.createElement('div')
         attwrap.className = 'msg-attachments'
         for (const a of attached) {
-          if (a.type === 'reference') {
-            const frag = document.createElement('div')
-            frag.innerHTML = renderreferencepill(a)
-            if (frag.firstElementChild) attwrap.appendChild(frag.firstElementChild)
+          const thumburl = a.previewUrl || (isimageattachment(a) && a.path ? vaultpreviewurl(a.path) : null)
+          if (isimageattachment(a) && thumburl) {
+            const img = document.createElement('img')
+            img.src = thumburl
+            img.className = 'msg-attachment-img'
+            img.alt = a.name || 'image'
+            img.title = a.path ? `${a.name} (${a.path})` : (a.name || 'image')
+            attwrap.appendChild(img)
           } else {
-            const pill = document.createElement('div')
-            pill.className = 'msg-attachment-pill'
-            pill.textContent = a.name || 'file'
-            attwrap.appendChild(pill)
+            const frag = document.createElement('div')
+            frag.innerHTML = renderattachmentpill(a)
+            if (frag.firstElementChild) attwrap.appendChild(frag.firstElementChild)
           }
         }
         usermsg.appendChild(attwrap)
@@ -1574,6 +1867,10 @@ export function replayconversationlogtoui() {
       continue
     }
     if (entry.role === 'assistant') {
+      const tools = Array.isArray(entry.tool_calls) ? entry.tool_calls : []
+      for (const call of tools) {
+        appenddonetoolactivity(call)
+      }
       const agentmsg = document.createElement('div')
       agentmsg.className = 'ai-msg agent'
       const text = entry.error || entry.reply || ''
@@ -1586,8 +1883,19 @@ export function replayconversationlogtoui() {
         applychatmarkdownto(bubble, text)
         agentmsg.appendChild(bubble)
       }
-      appendcopyactions(agentmsg, text)
-      aimessages.appendChild(agentmsg)
+
+      // restore quiz or choice answer bubbles from history --------------------
+      if (!entry.error) {
+        const next = conversationlog[i + 1]
+        const selected = next?.role === 'user' ? String(next.prompt || '').trim() : null
+        const optionsrow = buildoptionsrow(entry.options || [], selected)
+        if (optionsrow) agentmsg.appendChild(optionsrow)
+      }
+
+      if (text || agentmsg.querySelector('.ai-options-row')) {
+        appendcopyactions(agentmsg, text)
+        aimessages.appendChild(agentmsg)
+      }
     }
   }
   aimessages.scrollTop = aimessages.scrollHeight
@@ -1602,16 +1910,20 @@ export function applyconversationpersiststate(rec) {
   if (rec?.model) lastagentmodel = rec.model
   if (rec?.last_system_prompt_meta) lastsystempromptmeta = rec.last_system_prompt_meta
   replayconversationlogtoui()
+
+  const draft = rec?.draft && typeof rec.draft === 'object' ? rec.draft : { text: '', attachments: [] }
+  currentattachments = clonedraftattachments(draft.attachments)
+  renderattachmentspreview()
+  if (aiinput) {
+    aiinput.value = typeof draft.text === 'string' ? draft.text : ''
+    resizeaiinput()
+  }
 }
 
 // update ai context menu items state --------------------
 function updatecontextmenuui() {
   if (ctxitemcopychat) {
-    if (state.currentuser?.admin) {
-      ctxitemcopychat.classList.remove('hidden')
-    } else {
-      ctxitemcopychat.classList.add('hidden')
-    }
+    ctxitemcopychat.classList.remove('hidden')
   }
 }
 
@@ -1666,7 +1978,10 @@ export function initassistant() {
   }
 
   if (aiinput) {
-    aiinput.addEventListener('input', resizeaiinput)
+    aiinput.addEventListener('input', () => {
+      resizeaiinput()
+      scheduledraftsave()
+    })
     aiinput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
@@ -1676,6 +1991,7 @@ export function initassistant() {
         }
       }
     })
+    resizeaiinput()
 
     // paste file support --------------------
     aiinput.addEventListener('paste', (e) => {
@@ -1780,24 +2096,28 @@ export function initassistant() {
   }
 
   function handledropontochat(e) {
-    const vaultitem = getdraggeditem(e)
-    if (vaultitem && (vaultitem.type === 'file' || vaultitem.type === 'folder')) {
+    const vaultitems = getdraggeditems(e)
+    if (vaultitems.length) {
       e.preventDefault()
       e.stopPropagation()
       state.activefiledrag = null
       clearalldraghighlights()
-      const label = vaultitem.name || vaultitem.title || vaultitem.path?.split('/').pop() || vaultitem.path
-      addreferenceattachment({
-        refKind: vaultitem.type === 'folder' ? 'folder' : 'file',
-        name: label,
-        path: vaultitem.path
-      })
+      for (const vaultitem of vaultitems) {
+        if (vaultitem.type !== 'file' && vaultitem.type !== 'folder') continue
+        const label = vaultitem.name || vaultitem.title || vaultitem.path?.split('/').pop() || vaultitem.path
+        addreferenceattachment({
+          refKind: vaultitem.type === 'folder' ? 'folder' : 'file',
+          name: label,
+          path: vaultitem.path
+        })
+      }
       ensureaidraweropen()
       return true
     }
     if (e.dataTransfer?.files?.length) {
       e.preventDefault()
       e.stopPropagation()
+      clearalldraghighlights()
       handlefileupload(e.dataTransfer.files)
       return true
     }
@@ -1817,15 +2137,13 @@ export function initassistant() {
       el.classList.remove('drag-over')
     })
     el.addEventListener('drop', (e) => {
-      el.classList.remove('drag-over')
+      clearalldraghighlights()
       handledropontochat(e)
     })
   }
 
-  // drag vault items or files into chat --------------------
-  bindchatdropzone(aidrawer)
+  // compose box only -- not the whole chat drawer --------------------
   bindchatdropzone(aiform)
-  if (aiinput) bindchatdropzone(aiinput)
 
   window.addEventListener('mushnote-add-ai-reference', (e) => {
     if (!e.detail) return
@@ -1901,7 +2219,7 @@ export function initassistant() {
         await navigator.clipboard.writeText(json)
         ctxitemcopychat.innerHTML = '<span style="color:#10b981">copied</span>'
         setTimeout(() => {
-          ctxitemcopychat.innerHTML = '<img class="btn-icon-img" src="/resources/icons/files/text.png" alt="copy"> copy conversation'
+          ctxitemcopychat.innerHTML = '<img class="btn-icon-img" src="/resources/icons/general/copy.png" alt="copy"> copy conversation'
           closeaicontextmenu()
         }, 900)
       } catch (err) {

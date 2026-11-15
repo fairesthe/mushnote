@@ -17,6 +17,47 @@
   flex-shrink: 0;
 }
 
+.tab-back-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin: 0 -2px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #888888;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.tab-back-btn svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.tab-back-btn:hover {
+  background-color: #222222;
+  color: #ffffff;
+}
+
+.tab-icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: var(--icon-accent-filter, none);
+  opacity: 0.85;
+}
+
+.editor-tab.active .tab-icon {
+  opacity: 1;
+}
+
 .editor-tabs-bar::-webkit-scrollbar {
   display: none;
 }
@@ -32,16 +73,16 @@
 .editor-tab {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   height: 34px;
-  padding: 0 12px;
+  padding: 0 10px 0 8px;
   border-radius: 6px 6px 0 0;
   background-color: rgba(0, 0, 0, 0.35);
   border: 1px solid #1a1a1a;
   border-bottom: none;
   color: #888888;
   font-size: 13.5px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   cursor: pointer;
   max-width: 190px;
   white-space: nowrap;
@@ -109,7 +150,9 @@ body.is-dragging-tab * {
 .editor-container {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 40px);
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -117,15 +160,15 @@ body.is-dragging-tab * {
 }
 
 .editor-body {
-  flex-grow: 1;
+  flex: 1 1 0;
   position: relative;
-  height: 100%;
   min-height: 0;
+  height: auto;
   width: 100%;
   max-width: 100%;
   min-width: 0;
   overflow-y: auto;
-  overflow-x: auto;
+  overflow-x: hidden;
 }
 
 .editor-backdrop {
@@ -135,7 +178,7 @@ body.is-dragging-tab * {
   right: 0;
   bottom: 0;
   padding: 24px 28px;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+  font-family: var(--font-mono);
   font-size: calc(14px * var(--reading-scale, 1));
   line-height: 1.65;
   white-space: pre-wrap;
@@ -156,7 +199,7 @@ body.is-dragging-tab * {
   color: var(--text-color);
   border: none;
   outline: none;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+  font-family: var(--font-mono);
   font-size: calc(14px * var(--reading-scale, 1));
   line-height: 1.65;
   padding: 24px 28px;

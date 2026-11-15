@@ -8,7 +8,7 @@ import * as decoding from 'lib0/decoding'
 import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from 'y-prosemirror'
 import { Fragment } from '@tiptap/pm/model'
 import { readnote, writenote, imagefilepattern, audiofilepattern, videofilepattern } from '../vault/vault.js'
-import { recordhistory, recordevent, getrevisionbyid } from '../vault/history.js'
+import { recordhistory, recordevent, getrevisionbyid, getlatestrevision } from '../vault/history.js'
 import { markdowntodoc, doctomarkdown, noteschema } from './markdown.js'
 
 // wire protocol --------------------
@@ -385,7 +385,10 @@ export function getdocifloaded(noteid) {
 export function applyexternalchange(vaultdir, historydir, noteid, newcontent) {
   const found = finddocentry(noteid)
   if (!found) {
-    // not loaded, the next load folds disk into the saved state --------------------
+    // file is not open so compare against the last saved revision
+    // windows fires watch events on read and access so identical content must be a no-op
+    const latest = getlatestrevision(historydir, noteid)
+    if (latest && latest.content === newcontent) return false
     recordhistory(historydir, noteid, 'external', newcontent)
     return true
   }
@@ -397,13 +400,12 @@ export function applyexternalchange(vaultdir, historydir, noteid, newcontent) {
   return true
 }
 
-// handle file deleted on disk externally --------------------
-export function handleexternaldelete(vaultdir, historydir, noteid) {
+// stop live collab from resurrecting a note we just deleted --------------------
+export function evictnotedoc(historydir, noteid) {
   const found = finddocentry(noteid)
   if (found) {
     found.entry.kill()
     docmap.delete(found.key)
-    // kick open sockets so they reconnect to whatever lives at this path now --------------------
     const clients = clientmap.get(found.key)
     if (clients) {
       clientmap.delete(found.key)
@@ -413,6 +415,20 @@ export function handleexternaldelete(vaultdir, historydir, noteid) {
     }
   }
   removeyjsstate(historydir, noteid)
+}
+
+// drop every live doc under a folder path after the folder is wiped --------------------
+export function evictfolderdocs(historydir, folderpath) {
+  const prefix = `${cleanid(folderpath)}/`
+  const keys = [...docmap.keys()].filter((key) => key === cleanid(folderpath) || key.startsWith(prefix))
+  for (const key of keys) {
+    evictnotedoc(historydir, key)
+  }
+}
+
+// handle file deleted on disk externally --------------------
+export function handleexternaldelete(vaultdir, historydir, noteid) {
+  evictnotedoc(historydir, noteid)
   recordevent(historydir, {
     file_id: noteid,
     event_type: 'delete',
@@ -628,14 +644,16 @@ export async function streaminsert(entry, insertpos, text, origin) {
     return
   }
 
-  let pos = insertpos
-  let written = ''
+  // rich notes must never splice into roundtripped markdown
+  // each getcontent serialize made incomplete chunks and cite pills explode into <br> soup
+  const cur = entry.getcontent()
+  const at = Math.max(0, Math.min(insertpos, cur.length))
+  const before = cur.slice(0, at)
+  const after = cur.slice(at)
+  let built = ''
   for (const chunk of chunks) {
-    const current = entry.getcontent()
-    if (written) pos = relocatestream(current, written, pos)
-    entry.insertat(pos, chunk, origin)
-    pos += chunk.length
-    written += chunk
+    built += chunk
+    entry.setcontent(`${before}${built}${after}`, origin)
     await new Promise(r => setTimeout(r, 85))
   }
 }
@@ -651,22 +669,21 @@ async function streamreplace(entry, current, bounds, replacement, origin) {
     return
   }
 
+  // same rule as streaminsert: always rebuild from the original replacement text
+  // never splice chunks into a getcontent() roundtrip mid-stream
+  const before = current.slice(0, bounds.from)
+  const after = current.slice(bounds.to)
   const author = (typeof origin === 'object' && origin !== null) ? origin.author : (origin || 'ai')
   const chunks = author === 'ai' ? streamchunks(replacement, entry.kind) : [replacement]
-  const first = chunks.shift() || ''
-  entry.setcontent(`${current.slice(0, bounds.from)}${first}${current.slice(bounds.to)}`, origin)
-  if (!chunks.length) return
-
-  // first line is in, the rest streams like a normal insert from where it ended up --------------------
-  let pos = relocatestream(entry.getcontent(), first, bounds.from + first.length)
-  let written = first
+  if (chunks.length <= 1) {
+    entry.setcontent(`${before}${replacement || ''}${after}`, origin)
+    return
+  }
+  let built = ''
   for (const chunk of chunks) {
+    built += chunk
+    entry.setcontent(`${before}${built}${after}`, origin)
     await new Promise(r => setTimeout(r, 85))
-    const now = entry.getcontent()
-    pos = relocatestream(now, written, pos)
-    entry.insertat(pos, chunk, origin)
-    pos += chunk.length
-    written += chunk
   }
 }
 
@@ -849,6 +866,7 @@ export function handlesocket(socket, vaultdir, historydir, noteid, author = 'use
     clients.delete(socket)
     if (clients.size === 0) {
       clientmap.delete(key)
+      // killed docs must not flush or deleted notes come back from the dead --------------------
       entry.flushtodisk()
       return
     }

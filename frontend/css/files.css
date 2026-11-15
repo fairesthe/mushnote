@@ -2,7 +2,8 @@
 .sidebar-files-view {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   width: 100%;
   overflow: hidden;
 }
@@ -10,52 +11,110 @@
 .sidebar-settings-view {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   width: 100%;
   overflow: hidden;
   background-color: transparent;
 }
 
-.settings-top-bar {
+.btn-settings-logout,
+.btn-personality-jump {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  align-self: stretch;
+  width: 100%;
+  padding: 9px 12px;
+  background-color: #0a0a0a;
+  border: 1px solid var(--accent-color);
+  color: var(--text-color);
+  border-radius: 6px;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-settings-logout:hover,
+.btn-personality-jump:hover {
+  background-color: color-mix(in srgb, var(--accent-color) 12%, #0a0a0a);
+}
+
+/* admin select user picker (mirrors ai conv picker) -------------------- */
+.settings-user-select {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-user-picker {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border-color);
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--accent-color);
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-user-picker:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.settings-user-picker-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #1a1a1a;
   flex-shrink: 0;
 }
 
-.btn-settings-back {
-  background: transparent;
+.settings-user-picker-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-user-chevron {
+  flex-shrink: 0;
+  opacity: 0.75;
+  transition: transform 0.15s ease;
+}
+
+.settings-user-select.is-open .settings-user-chevron {
+  transform: rotate(180deg);
+}
+
+.settings-user-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
   border: 1px solid var(--border-color);
-  color: var(--text-color);
-  font-size: 12px;
-  font-weight: 500;
-  border-radius: 4px;
-  padding: 4px 8px;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
+  border-radius: 8px;
+  background: #0a0a0a;
 }
 
-.btn-settings-back:hover {
-  background-color: var(--ai-input-surface);
+.settings-main-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
-.btn-settings-logout {
-  background: transparent;
-  border: 1px solid var(--accent-color);
-  color: var(--accent-color);
-  font-size: 12px;
-  font-weight: 500;
-  border-radius: 4px;
-  padding: 4px 10px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.btn-settings-logout:hover {
-  background-color: var(--accent-color);
-  color: #000000;
+.sidebar-settings-view.users-mode .settings-main-panel {
+  display: none;
 }
 
 .settings-scroll-content {
@@ -83,6 +142,17 @@
   border-bottom: 1px solid var(--border-color);
 }
 
+.settings-jobs-blurb {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted-color);
+  background: var(--ai-input-surface);
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+}
+
 .settings-form {
   display: flex;
   flex-direction: column;
@@ -101,6 +171,13 @@
   font-weight: 500;
 }
 
+.settings-field-note {
+  margin: 2px 0 0;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--muted-color);
+}
+
 /* reading scale slider control in settings -------------------- */
 .settings-field-header {
   display: flex;
@@ -110,7 +187,7 @@
 
 .settings-field-badge {
   font-size: 11.5px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   color: var(--accent-color);
   background-color: var(--ai-input-surface);
   padding: 1px 6px;
@@ -203,22 +280,12 @@
   margin-bottom: 2px;
 }
 
-.btn-personality-jump {
-  width: 100%;
-  padding: 7px 10px;
-  background-color: var(--ai-input-surface);
-  border: 1px dashed var(--border-color);
-  color: var(--text-color);
-  border-radius: 6px;
-  font-size: 11px;
-  cursor: pointer;
-  text-align: center;
-  transition: background-color 0.15s ease;
-}
-
-.btn-personality-jump:hover {
-  background-color: var(--surface-glass-hover);
-  border-color: #444444;
+.btn-personality-jump-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: var(--icon-accent-filter, none);
 }
 
 .settings-colors-grid {
@@ -265,7 +332,7 @@
   background: transparent;
   color: var(--text-color);
   font-size: 11px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   outline: none;
 }
 
@@ -519,6 +586,15 @@
   font-weight: 500;
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.folder-quick-icon {
+  width: 12px;
+  height: 12px;
+  filter: var(--icon-accent-filter, none);
 }
 
 .folder-quick-btn:hover {
@@ -538,23 +614,31 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--border-color);
   font-size: 13px;
   color: #888888;
-  overflow-x: auto;
-  white-space: nowrap;
+  min-width: 0;
 }
 
 .breadcrumb-back {
-  padding: 3px 8px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 1px solid var(--border-color);
   border-radius: 6px;
   background-color: #0c0c0c;
   color: #aaaaaa;
   cursor: pointer;
-  font-size: 12px;
   transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.breadcrumb-back.hidden {
+  display: none;
 }
 
 .breadcrumb-back:hover {
@@ -562,30 +646,36 @@
   color: var(--accent-color);
 }
 
-.breadcrumb-trail {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow-x: auto;
+.folder-kind-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
+  opacity: 0.85;
+  filter: var(--icon-accent-filter, none);
 }
 
-.breadcrumb-crumb {
-  cursor: pointer;
-  color: #888888;
-  transition: color 0.15s ease;
+.folder-path-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background-color: #0c0c0c;
+  color: var(--text-color);
+  font-size: 12.5px;
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color 0.15s ease;
 }
 
-.breadcrumb-crumb:hover {
-  color: var(--accent-color);
+.folder-path-input:focus {
+  border-color: #444444;
 }
 
-.breadcrumb-crumb.active {
-  color: var(--accent-color);
-  font-weight: 600;
-}
-
-.breadcrumb-sep {
-  color: #444444;
+.folder-path-input.drag-over {
+  border-color: transparent;
 }
 
 .folder-items {
@@ -621,6 +711,15 @@
   font-weight: 500;
 }
 
+/* ctrl or cmd multi select -------------------- */
+.folder-row.is-selected {
+  background-color: color-mix(in srgb, var(--accent-color) 14%, transparent);
+}
+
+.folder-row.is-selected.active {
+  background-color: color-mix(in srgb, var(--accent-color) 20%, var(--surface-glass-hover));
+}
+
 /* slightly transparent file or folder while being cut -------------------- */
 .folder-row.is-cut {
   opacity: 0.45;
@@ -631,14 +730,15 @@
   height: 18px;
   object-fit: contain;
   flex-shrink: 0;
+  filter: var(--icon-accent-filter, none);
 }
 
 .breadcrumb-back-icon {
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   object-fit: contain;
-  vertical-align: middle;
-  margin-right: 4px;
+  display: block;
+  filter: var(--icon-accent-filter, none);
 }
 
 .btn-icon-img {
@@ -647,6 +747,29 @@
   object-fit: contain;
   vertical-align: middle;
   margin-right: 6px;
+  filter: var(--icon-accent-filter, none);
+}
+
+/* keep drawn colors for danger icons and hand-drawn tool icons -------------------- */
+.btn-icon-img[src*="delete.png"],
+.btn-icon-img[src*="deleted-tracker.png"],
+.btn-icon-img[src*="error.png"],
+.btn-icon-img[src*="warning.png"],
+.btn-icon-img[src*="/icons/tools/"],
+.text-danger .btn-icon-img,
+.folder-row.is-deleted .row-icon-img,
+.row-icon-img[src*="/icons/tools/"],
+.ai-activity-icon[src*="/icons/tools/"],
+.ai-activity-icon[src*="delete"],
+.ai-activity-icon[src*="error"],
+.ai-activity-icon[src*="warning"],
+.ai-status-icon[src*="/icons/tools/"],
+.ai-status-icon[src*="delete"],
+.ai-status-icon[src*="error"],
+.ai-status-icon[src*="warning"],
+.attachment-type-icon[src*="/icons/tools/"],
+.attachment-pill-icon[src*="/icons/tools/"] {
+  filter: none;
 }
 
 .row-name {
@@ -654,6 +777,29 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.folder-row.is-editing {
+  cursor: default;
+  background-color: var(--surface-glass-hover);
+}
+
+.folder-row.is-editing:hover {
+  background-color: var(--surface-glass-hover);
+  color: #cccccc;
+}
+
+.row-name-input {
+  flex-grow: 1;
+  min-width: 0;
+  background: #111111;
+  border: 1px solid var(--accent-color);
+  border-radius: 4px;
+  color: var(--text-color);
+  font-size: 14px;
+  font-family: inherit;
+  padding: 2px 6px;
+  outline: none;
 }
 
 .row-arrow {
@@ -675,6 +821,13 @@
   font-size: 12px;
   color: #666666;
   user-select: none;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+  pointer-events: none;
+}
+
+.sidebar-files-view:hover .folder-hint {
+  opacity: 1;
 }
 
 /* deleted history tracker rows -------------------- */

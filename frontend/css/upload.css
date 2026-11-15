@@ -1,0 +1,92 @@
+/* os file drag zones and upload progress -------------------- */
+body.is-dragging-os-file {
+  cursor: copy;
+}
+
+body.is-dragging-os-file .os-drop-target {
+  outline: 2px dashed #777777;
+  outline-offset: -3px;
+}
+
+body.is-dragging-os-file .os-drop-target.os-drop-hover {
+  outline: 2px dashed var(--accent-color);
+  outline-offset: -3px;
+  background-color: color-mix(in srgb, var(--accent-color) 7%, transparent);
+}
+
+/* collapsed chat: peek the compose strip so it is droppable -------------------- */
+body.is-dragging-os-file #ai-drawer.is-collapsed {
+  width: 160px !important;
+  min-width: 160px !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  border-left: 1px solid var(--border-color);
+  transition: none !important;
+}
+
+body.is-dragging-os-file #ai-drawer.is-collapsed .ai-header,
+body.is-dragging-os-file #ai-drawer.is-collapsed .ai-messages,
+body.is-dragging-os-file #ai-drawer.is-collapsed .ai-panel-conversations {
+  display: none !important;
+}
+
+.upload-progress-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.upload-progress-overlay.hidden {
+  display: none;
+}
+
+.upload-progress-card {
+  width: min(360px, calc(100vw - 32px));
+  padding: 18px 18px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: #121212;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.upload-progress-label {
+  font-size: 14px;
+  color: var(--text-color);
+  margin-bottom: 12px;
+}
+
+.upload-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: #222222;
+  overflow: hidden;
+}
+
+.upload-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: var(--accent-color);
+  transition: width 0.12s ease;
+}
+
+.upload-progress-cancel {
+  margin-top: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: #aaaaaa;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.upload-progress-cancel:hover {
+  border-color: #555555;
+  color: #ffffff;
+}

@@ -7,10 +7,11 @@ import { loadconfig, saveconfig, getvaultpath, gethistorypath, getrootdir } from
 import { initvault, getnotepath, listnotes, listfolders, readnote, deletenote, movenoteorfolder, createfolder, deletefolder, copynoteorfolder, getuniqueconflictpath, initsystemnotes, readuserpreferences, updateuserpreferences, normalizepreferences, audiofilepattern } from './vault/vault.js'
 import { extractaudiocover } from './vault/audiocover.js'
 import { inithistory, getrevisionbyid, getfiletimeline, getevents, getnoteauthorship, getdeletednotes, gethourlytimeline } from './vault/history.js'
-import { getdoc, getdocifloaded, applydiff, restorenoterevision, handlesocket, migratedocentry } from './sync/sync.js'
-import { verifypassword, setuserauth, createsession, getsession, extracttoken, formatavatarurl } from './auth/auth.js'
+import { getdoc, getdocifloaded, applydiff, restorenoterevision, handlesocket, migratedocentry, evictnotedoc, evictfolderdocs } from './sync/sync.js'
+import { verifypassword, setuserauth, createsession, getsession, extracttoken, formatavatarurl } from './core/auth.js'
 import { runagentchat } from './agent/agent.js'
-import { generateconversationtitle } from './agent/conversationtitle.js'
+import { startjobscheduler } from './agent/jobs.js'
+import { generateconversationtitle } from './agent/chat/conversationtitle.js'
 import {
   listconversations,
   readconversation,
@@ -22,7 +23,7 @@ import {
 } from './vault/conversations.js'
 import { initvaultwatcher } from './vault/watcher.js'
 import { log, printbanner, requestlogger } from './core/logger.js'
-import { registerv1routes } from './api/v1routes.js'
+import { registerv1routes } from './http/v1routes.js'
 
 // configuration and initialization --------------------
 const config = loadconfig()
@@ -528,6 +529,11 @@ app.get('/api/raw', (req, res) => {
   if (!fs.existsSync(filepath)) {
     return res.status(404).json({ error: 'file not found' })
   }
+  // keep pdfs inline so the in-tab iframe can render them --------------------
+  if (/\.pdf$/i.test(filepath)) {
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', 'inline')
+  }
   res.sendFile(filepath)
 })
 
@@ -775,6 +781,8 @@ app.delete('/api/note', (req, res) => {
   if (!deleted) {
     return res.status(404).json({ error: 'note not found' })
   }
+  // kill live yjs before any tab close can flush the note back onto disk --------------------
+  evictnotedoc(historydir, noteid)
   log.note('delete', noteid, `by ${author}`)
   res.json({ status: 'deleted', note_id: noteid })
 })
@@ -790,6 +798,7 @@ app.delete('/api/notes/:id', (req, res) => {
   if (!deleted) {
     return res.status(404).json({ error: 'note not found' })
   }
+  evictnotedoc(historydir, req.params.id)
   log.note('delete', req.params.id, `by ${author}`)
   res.json({ status: 'deleted', note_id: req.params.id })
 })
@@ -854,6 +863,7 @@ app.delete('/api/folder', (req, res) => {
     if (!deleted) {
       return res.status(404).json({ error: 'folder not found' })
     }
+    evictfolderdocs(historydir, folderpath)
     log.vault('delete', folderpath, `by ${author}`)
     res.json({ status: 'deleted', folder: folderpath })
   } catch (err) {
@@ -940,6 +950,9 @@ app.put('/api/conversations/:id', (req, res) => {
   if (req.body?.model !== undefined) patch.model = req.body.model
   if (req.body?.last_system_prompt_meta !== undefined) {
     patch.last_system_prompt_meta = req.body.last_system_prompt_meta
+  }
+  if (req.body?.draft !== undefined) {
+    patch.draft = req.body.draft
   }
   try {
     const record = saveconversation(vaultdir, session.user_id, id, patch)
@@ -1234,4 +1247,7 @@ server.listen(port, host, () => {
 
   // watch vault directory for external file edits and sync live --------------------
   initvaultwatcher(vaultdir, historydir, wss)
+
+  // scheduled jobs under system/<user>/jobs --------------------
+  startjobscheduler()
 })

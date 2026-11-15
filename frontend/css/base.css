@@ -13,8 +13,10 @@
   --surface-glass-hover: color-mix(in srgb, var(--bg-color) 32%, #000000);
   --ai-input-surface: color-mix(in srgb, var(--surface-glass) 58%, transparent);
   --workspace-chrome-height: 40px;
-  --sidebar-width: 260px;
+  --sidebar-width: 300px;
   --reading-scale: 1;
+  --font-ui: "Atkinson Hyperlegible", "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 /* flat ui, no shadows or gradient fills -------------------- */
@@ -60,9 +62,22 @@
 body {
   background-color: var(--bg-color);
   color: var(--text-color);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-ui);
   height: 100vh;
   overflow: hidden;
+}
+
+code,
+kbd,
+samp,
+pre,
+.cm-editor,
+.cm-content,
+.hljs,
+.ProseMirror code,
+.msg-bubble.rendered-md code,
+.msg-bubble.rendered-md pre {
+  font-family: var(--font-mono);
 }
 
 /* shared hide toggle used by login and the editor -------------------- */

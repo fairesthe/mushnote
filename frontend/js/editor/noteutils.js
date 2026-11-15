@@ -1,5 +1,9 @@
 import { state } from '../core/state.js'
-import { notemarkdownfromeditor, cleanmarkdown } from './tiptap.bundle.js'
+import { notemarkdownfromeditor, cleanmarkdown } from './rich/tiptap.bundle.js'
+
+export function isauthorai(author) {
+  return author === 'ai' || Boolean(state.aiuserid && author === state.aiuserid)
+}
 
 // check if file is markdown based on extension or mushnote default --------------------
 export function ismarkdownfile(noteid) {

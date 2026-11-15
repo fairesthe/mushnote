@@ -6,6 +6,7 @@
   <title>mushnote</title>
   <link rel="icon" type="image/png" href="/logo.png">
   <!-- order matters, later files win ties -------------------- -->
+  <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/auth.css">
   <link rel="stylesheet" href="css/layout.css">
@@ -18,6 +19,7 @@
   <link rel="stylesheet" href="css/ui.css">
   <link rel="stylesheet" href="css/chat.css">
   <link rel="stylesheet" href="css/viewers.css">
+  <link rel="stylesheet" href="css/upload.css">
   <link rel="stylesheet" href="/vendor/katex/katex.min.css">
 </head>
 <body>
@@ -25,70 +27,79 @@
   <div id="workspace-view" class="workspace-layout">
     <!-- left column directory tree and user -------------------- -->
     <aside id="sidebar-pane" class="sidebar">
+      <!-- shared header stays put while files or settings swap below -------------------- -->
+      <div class="sidebar-header">
+        <div class="sidebar-brand">
+          <img class="sidebar-logo" src="/logo.png" alt="mushnote" title="mushnote">
+        </div>
+        <button type="button" class="sidebar-user" id="sidebar-user-box" title="user settings">
+          <img id="logged-avatar" class="sidebar-avatar" src="" alt="avatar">
+          <span id="logged-name" class="sidebar-user-name"></span>
+          <svg class="sidebar-user-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+      </div>
+
       <!-- files tree view -------------------- -->
       <div id="sidebar-files-view" class="sidebar-files-view">
-        <div class="sidebar-header">
-          <div class="sidebar-brand">
-            <img class="sidebar-logo" src="/logo.png" alt="mushnote" title="mushnote">
-          </div>
-          <div class="sidebar-user" id="sidebar-user-box" style="cursor: pointer;" title="user settings">
-            <img id="logged-avatar" class="sidebar-avatar" src="" alt="avatar">
-            <span id="logged-name" class="sidebar-user-name"></span>
-          </div>
-        </div>
-
         <div class="folder-quick-nav" id="folder-quick-nav">
-          <button type="button" id="btn-folder-home" class="folder-quick-btn" title="vault root">home</button>
-          <button type="button" id="btn-folder-media" class="folder-quick-btn" title="media folder">media</button>
+          <button type="button" id="btn-folder-home" class="folder-quick-btn" title="you can drag to me too!"><img class="folder-quick-icon" src="/resources/icons/general/home.png" alt=""> home</button>
+          <button type="button" id="btn-folder-media" class="folder-quick-btn" title="you can drag to me too!"><img class="folder-quick-icon" src="/resources/icons/general/media.png" alt=""> media</button>
         </div>
 
         <nav class="folder-nav" id="folder-nav-pane">
-          <div id="folder-breadcrumb" class="folder-breadcrumb"></div>
+          <div id="folder-breadcrumb" class="folder-breadcrumb">
+            <button type="button" id="btn-folder-up" class="breadcrumb-back hidden" title="go to parent folder"><img class="breadcrumb-back-icon" src="/resources/icons/files/updirectory.png" alt="back"></button>
+            <img id="folder-kind-icon" class="folder-kind-icon" src="/resources/icons/files/folder.png" alt="">
+            <input id="folder-path-input" class="folder-path-input" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="vault path" value="/vault">
+          </div>
           <div id="folder-items" class="folder-items"></div>
         </nav>
       </div>
 
       <!-- user settings view -------------------- -->
       <div id="sidebar-settings-view" class="sidebar-settings-view hidden">
-        <!-- top bar starting with back and log out -------------------- -->
-        <div class="settings-top-bar">
-          <div class="settings-top-left">
-            <img class="sidebar-logo" src="/logo.png" alt="mushnote" title="mushnote">
-            <button type="button" id="btn-settings-back" class="btn-settings-back" title="back to notes">&larr; notes</button>
-          </div>
-          <button type="button" id="btn-settings-logout" class="btn-settings-logout">log out</button>
-        </div>
-
         <div class="settings-scroll-content">
-          <!-- user selection section (admin only) -------------------- -->
-          <section id="user-selection-section" class="settings-block hidden">
-            <h2 class="settings-block-title">users</h2>
-            <div id="user-radio-list" class="user-radio-list">
-              <!-- radio buttons rendered dynamically -------------------- -->
+          <button type="button" id="btn-settings-logout" class="btn-settings-logout">log out</button>
+
+          <!-- admin select user (collapsed card like ai conv picker) -------------------- -->
+          <section id="user-selection-section" class="settings-user-select hidden">
+            <button type="button" id="btn-settings-user-picker" class="settings-user-picker" title="select user">
+              <img id="settings-user-picker-avatar" class="settings-user-picker-avatar" src="" alt="">
+              <span id="settings-user-picker-name" class="settings-user-picker-name">select user</span>
+              <svg class="settings-user-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+
+            <div id="settings-user-panel" class="settings-user-panel hidden">
+              <div id="user-radio-list" class="user-radio-list">
+                <!-- radio buttons rendered dynamically -------------------- -->
+              </div>
+
+              <button type="button" id="btn-toggle-add-user" class="btn-add-account-toggle">+ add account</button>
+
+              <form id="form-inline-add-user" class="inline-add-user-form hidden">
+                <div class="settings-field">
+                  <input type="text" id="inline-new-username" class="settings-input" placeholder="new username" autocomplete="off" required>
+                </div>
+                <label class="settings-checkbox-wrap">
+                  <input type="checkbox" id="inline-new-is-admin">
+                  <span>grant admin</span>
+                </label>
+                <label class="settings-checkbox-wrap">
+                  <input type="checkbox" id="inline-new-is-bot">
+                  <span>bot account</span>
+                </label>
+                <div class="add-user-btn-row">
+                  <button type="submit" class="btn-primary-settings">create</button>
+                  <button type="button" id="btn-cancel-add-user" class="btn-secondary-settings">cancel</button>
+                </div>
+                <div id="inline-add-user-msg" class="settings-msg hidden"></div>
+              </form>
             </div>
-
-            <button type="button" id="btn-toggle-add-user" class="btn-add-account-toggle">+ add account</button>
-
-            <!-- inline add account form -------------------- -->
-            <form id="form-inline-add-user" class="inline-add-user-form hidden">
-              <div class="settings-field">
-                <input type="text" id="inline-new-username" class="settings-input" placeholder="new username" autocomplete="off" required>
-              </div>
-              <label class="settings-checkbox-wrap">
-                <input type="checkbox" id="inline-new-is-admin">
-                <span>grant admin</span>
-              </label>
-              <label class="settings-checkbox-wrap">
-                <input type="checkbox" id="inline-new-is-bot">
-                <span>bot account</span>
-              </label>
-              <div class="add-user-btn-row">
-                <button type="submit" class="btn-primary-settings">create</button>
-                <button type="button" id="btn-cancel-add-user" class="btn-secondary-settings">cancel</button>
-              </div>
-              <div id="inline-add-user-msg" class="settings-msg hidden"></div>
-            </form>
           </section>
+
+          <div id="settings-main-panel" class="settings-main-panel">
+          <!-- jobs tip -------------------- -->
+          <p class="settings-jobs-blurb">want a daily breifing or some other scheduled task? ask the agent about mushnote jobs — it can create, edit, and list them for you</p>
 
           <!-- user settings section -------------------- -->
           <section class="settings-block">
@@ -103,6 +114,7 @@
               <div class="settings-field">
                 <label for="setting-avatar-url">avatar url</label>
                 <input type="text" id="setting-avatar-url" class="settings-input" placeholder="/avatars/wyatt.png" autocomplete="off">
+                <p class="settings-field-note">tip: drag an image tab onto this field to drop its path</p>
               </div>
 
               <div class="settings-field">
@@ -117,7 +129,8 @@
               </div>
 
               <button type="button" id="btn-jump-personality-sidebar" class="btn-personality-jump">
-                jump to personality note &rarr;
+                <img class="btn-personality-jump-icon" src="/resources/icons/files/text.png" alt="">
+                jump to personality note
               </button>
 
               <div class="settings-section-subtitle">theme colors</div>
@@ -209,6 +222,7 @@
               <div id="admin-delete-msg" class="settings-msg hidden"></div>
             </div>
           </section>
+          </div>
         </div>
       </div>
     </aside>
@@ -235,55 +249,60 @@
         <!-- top toolbar -------------------- -->
         <div id="editor-toolbar" class="editor-toolbar">
           <div class="toolbar-group">
-            <button type="button" class="toolbar-btn" data-action="h1" title="heading 1">h1</button>
-            <button type="button" class="toolbar-btn" data-action="h2" title="heading 2">h2</button>
-            <button type="button" class="toolbar-btn" data-action="h3" title="heading 3">h3</button>
+            <button type="button" class="toolbar-btn" data-action="h1" data-tip="heading 1">h1</button>
+            <button type="button" class="toolbar-btn" data-action="h2" data-tip="heading 2">h2</button>
+            <button type="button" class="toolbar-btn" data-action="h3" data-tip="heading 3">h3</button>
           </div>
           <div class="toolbar-divider"></div>
           <div class="toolbar-group">
-            <button type="button" class="toolbar-btn" data-action="bold" title="bold (ctrl+b)"><b>b</b></button>
-            <button type="button" class="toolbar-btn" data-action="italic" title="italic (ctrl+i)"><i>i</i></button>
-            <button type="button" class="toolbar-btn" data-action="strike" title="strikethrough"><s>s</s></button>
-            <button type="button" class="toolbar-btn" data-action="highlight" title="highlight (==text==)">highlight</button>
-            <button type="button" class="toolbar-btn" data-action="link" title="link note or url (ctrl+k)">link</button>
-            <button type="button" class="toolbar-btn" data-action="image" title="insert image">image</button>
-            <button type="button" class="toolbar-btn" data-action="latex" title="latex math ($formula$)">latex</button>
-            <button type="button" class="toolbar-btn" data-action="code" title="inline code"><code>&lt;&gt;</code></button>
+            <button type="button" class="toolbar-btn" data-action="bold" data-tip="bold (ctrl+b)"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/bold.png" alt="bold"></button>
+            <button type="button" class="toolbar-btn" data-action="italic" data-tip="italic (ctrl+i)"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/italic.png" alt="italic"></button>
+            <button type="button" class="toolbar-btn" data-action="strike" data-tip="strikethrough"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/strike.png" alt="strike"></button>
+            <button type="button" class="toolbar-btn" data-action="highlight" data-tip="highlight (==text==)"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/highlight.png" alt="highlight"></button>
+            <button type="button" class="toolbar-btn" data-action="link" data-tip="link note or url (ctrl+k)"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/link-tool.png" alt="link"></button>
+            <button type="button" class="toolbar-btn" data-action="image" data-tip="insert image"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/image-insert.png" alt="image"></button>
+            <button type="button" class="toolbar-btn" data-action="latex" data-tip="latex math ($formula$)"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/latex.png" alt="latex"></button>
+            <button type="button" class="toolbar-btn" data-action="code" data-tip="inline code"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/inline-code.png" alt="code"></button>
           </div>
           <div class="toolbar-divider"></div>
           <div class="toolbar-group">
-            <button type="button" class="toolbar-btn" data-action="bullet-list" title="bullet list">• list</button>
-            <button type="button" class="toolbar-btn" data-action="ordered-list" title="ordered list">1. list</button>
-            <button type="button" class="toolbar-btn" data-action="task-list" title="checklist">☑ task</button>
+            <button type="button" class="toolbar-btn" data-action="bullet-list" data-tip="bullet list"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/list-bullet.png" alt="bullet list"></button>
+            <button type="button" class="toolbar-btn" data-action="ordered-list" data-tip="ordered list"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/list-ordered.png" alt="ordered list"></button>
+            <button type="button" class="toolbar-btn" data-action="task-list" data-tip="checklist"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/list-task.png" alt="task list"></button>
           </div>
           <div class="toolbar-divider"></div>
           <div class="toolbar-group">
-            <button type="button" class="toolbar-btn" data-action="blockquote" title="quote block">“ quote</button>
-            <button type="button" class="toolbar-btn" data-action="code-block" title="code block">block</button>
-            <button type="button" class="toolbar-btn" data-action="horizontal-rule" title="divider line">—</button>
+            <button type="button" class="toolbar-btn" data-action="blockquote" data-tip="quote block"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/quote.png" alt="quote"></button>
+            <button type="button" class="toolbar-btn" data-action="code-block" data-tip="code block"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/codeblock.png" alt="code block"></button>
+            <button type="button" class="toolbar-btn" data-action="table" data-tip="insert table"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/table.png" alt="table"></button>
+            <button type="button" class="toolbar-btn" data-action="horizontal-rule" data-tip="divider line"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/hr.png" alt="divider"></button>
           </div>
           <div class="toolbar-divider"></div>
           <div class="toolbar-group">
-            <button type="button" class="toolbar-btn" data-action="undo" title="undo (ctrl+z)">↶</button>
-            <button type="button" class="toolbar-btn" data-action="redo" title="redo (ctrl+y)">↷</button>
+            <button type="button" class="toolbar-btn" data-action="undo" data-tip="undo (ctrl+z)"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/undo.png" alt="undo"></button>
+            <button type="button" class="toolbar-btn" data-action="redo" data-tip="redo (ctrl+y)"><img class="toolbar-btn-icon" src="/resources/icons/toolbar/redo.png" alt="redo"></button>
           </div>
           <div class="toolbar-spacer"></div>
-          <button type="button" id="btn-editor-history" class="toolbar-btn toolbar-btn-history" title="revision history">history</button>
+          <button type="button" id="btn-editor-history" class="toolbar-btn toolbar-btn-history" data-tip="revision history"><img class="toolbar-btn-icon" src="/resources/icons/general/history.png" alt="history"></button>
         </div>
 
-        <div id="code-editor-toolbar" class="editor-toolbar code-editor-toolbar hidden">
-          <div class="toolbar-spacer"></div>
-          <button type="button" id="btn-code-editor-history" class="toolbar-btn toolbar-btn-history" title="revision history">history</button>
-        </div>
+        <div id="toolbar-tip" class="toolbar-tip" aria-hidden="true"></div>
 
         <!-- editor body -------------------- -->
         <div class="editor-body">
           <div id="tiptap-editor" class="tiptap-editor"></div>
           <div id="plain-editor-wrap" class="plain-editor-wrap hidden">
-            <button type="button" id="btn-view-page" class="btn-view-page btn-view-page-float hidden" title="view page preview">
-              <span class="btn-view-page-icon">&lt;/&gt;</span>
-              <span class="btn-view-page-text">view page</span>
-            </button>
+            <div id="code-editor-float" class="code-editor-float">
+              <button type="button" id="btn-view-page" class="btn-view-page hidden" title="view page preview">
+                <img class="btn-view-page-icon" src="/resources/icons/toolbar/inline-code.png" alt="">
+                <span class="btn-view-page-text">view page</span>
+              </button>
+              <button type="button" id="btn-code-editor-history" class="btn-view-page btn-view-history" title="revision history">
+                <img class="btn-view-history-icon" src="/resources/icons/general/history.png" alt="">
+                <span class="btn-view-page-text">view history</span>
+              </button>
+              <div id="code-line-count" class="code-line-count" aria-live="polite">0 lines</div>
+            </div>
             <div id="codemirror-editor" class="codemirror-editor"></div>
             <div class="editor-backdrop" id="editor-backdrop" aria-hidden="true" style="display:none"></div>
             <textarea id="note-editor" class="note-textarea hidden" placeholder="start typing..." spellcheck="false"></textarea>
@@ -306,7 +325,7 @@
                   <button type="button" class="history-mode-btn" data-mode="hourly">hourly</button>
                   <button type="button" class="history-mode-btn" data-mode="all">all</button>
                 </div>
-                <button type="button" id="btn-history-restore" class="toolbar-btn history-restore-btn" disabled>restore</button>
+                <button type="button" id="btn-history-restore" class="toolbar-btn history-restore-btn" disabled><img class="toolbar-btn-icon" src="/resources/icons/general/restore.png" alt=""> restore</button>
               </div>
             </div>
             <aside id="history-rev-list" class="history-rev-list"></aside>
@@ -326,6 +345,12 @@
             <audio id="media-viewer-audio" class="media-viewer-audio" controls preload="metadata"></audio>
           </div>
           <video id="media-viewer-video" class="media-viewer-video hidden" controls preload="metadata"></video>
+          <iframe id="media-viewer-pdf" class="media-viewer-pdf hidden" title="pdf viewer"></iframe>
+          <div id="media-viewer-file" class="media-viewer-file hidden">
+            <img id="media-viewer-file-icon" class="media-viewer-file-icon" src="/resources/icons/files/binary.png" alt="">
+            <div id="media-viewer-file-name" class="media-viewer-file-name"></div>
+            <div class="media-viewer-file-hint">no in-app preview for this type -- use download</div>
+          </div>
           <div id="image-viewer-meta" class="image-viewer-meta"></div>
         </div>
       </div>
@@ -336,9 +361,15 @@
           <div class="preview-nav-controls">
             <button type="button" id="btn-preview-back" class="preview-nav-btn" title="back">&lt;</button>
             <button type="button" id="btn-preview-forward" class="preview-nav-btn" title="forward">&gt;</button>
-            <button type="button" id="btn-preview-reload" class="preview-nav-btn" title="reload">reload</button>
+            <button type="button" id="btn-preview-reload" class="preview-nav-btn preview-nav-icon-btn" title="reload">
+              <img src="/resources/icons/general/refresh.png" alt="" class="preview-nav-icon">
+            </button>
           </div>
           <input type="text" id="preview-address-bar" class="preview-address-bar" spellcheck="false" autocomplete="off" placeholder="/preview/... or https://...">
+          <button type="button" id="btn-preview-back-to-code" class="preview-nav-btn preview-back-to-code" title="back to code">
+            <img class="btn-view-page-icon" src="/resources/icons/toolbar/inline-code.png" alt="">
+            <span>back to code</span>
+          </button>
         </div>
         <div class="preview-frame-wrap">
           <iframe id="preview-iframe" class="preview-iframe" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
@@ -353,8 +384,8 @@
     <aside id="ai-drawer" class="ai-drawer is-collapsed">
       <header class="ai-header">
         <div class="ai-title-wrap">
-          <img id="ai-drawer-avatar" class="ai-avatar-small" alt="ai">
           <button type="button" id="btn-ai-conv-picker" class="ai-conv-picker" title="conversations">
+            <img id="ai-drawer-avatar" class="ai-avatar-small" alt="ai">
             <span id="ai-conv-title" class="ai-conv-title">new chat</span>
             <svg class="ai-conv-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
           </button>
@@ -376,7 +407,7 @@
       <form id="ai-form" class="ai-input-wrap">
         <div id="ai-attachments-preview" class="ai-attachments-preview hidden"></div>
         <div class="ai-input-box">
-          <textarea id="ai-input" class="ai-input" rows="2" placeholder="ask assistant anything..." autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off"></textarea>
+          <textarea id="ai-input" class="ai-input" rows="1" placeholder="ask assistant anything..." autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off"></textarea>
           <div class="ai-input-bottom-bar">
             <button type="button" id="btn-ai-attach" class="btn-attach" title="attach file (images, pdf, sound, video)">
               <svg class="icon-plus-circle" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -385,7 +416,7 @@
                 <line x1="8" y1="12" x2="16" y2="12"></line>
               </svg>
             </button>
-            <input type="file" id="ai-file-input" class="hidden" multiple accept="image/*,application/pdf,audio/*,video/*">
+            <input type="file" id="ai-file-input" class="hidden" multiple accept="image/*,application/pdf,audio/*,video/*,.zip,.7z,.rar,application/zip,application/x-zip-compressed,application/x-7z-compressed,application/vnd.rar,application/x-rar-compressed">
             <button type="submit" id="btn-ai-send" class="btn-send">send</button>
           </div>
         </div>
@@ -394,58 +425,49 @@
     </aside>
   </div>
 
-  <!-- new note modal -------------------- -->
-  <div id="new-note-dialog" class="dialog-overlay hidden">
-    <div class="dialog-box">
-      <h3 class="dialog-title">create new note</h3>
-      <p class="dialog-sub">enter note path (e.g. groceries or work/ideas)</p>
-
-      <form id="new-note-form" class="auth-form">
-        <div class="input-group">
-          <input type="text" id="new-note-input" placeholder="filename or folder/filename" required autofocus>
-        </div>
-        <div id="new-note-error" class="error-text hidden"></div>
-        <div class="dialog-actions">
-          <button type="button" id="btn-cancel-new-note" class="btn secondary">cancel</button>
-          <button type="submit" class="btn primary">create</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <!-- custom right click context menu -------------------- -->
   <div id="file-context-menu" class="context-menu hidden">
-    <div id="ctx-item-open-tab" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/new.png" alt="tab"> open in new tab</div>
+    <div id="ctx-item-open-tab" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/open-tab.png" alt="tab"> open in new tab</div>
     <div id="ctx-item-view-page" class="context-item hidden"><img class="btn-icon-img" src="/resources/icons/files/code.png" alt="view"> view page</div>
-    <div id="ctx-item-new" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/new.png" alt="new"> new note...</div>
-    <div id="ctx-item-new-folder" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/newfolder.png" alt="newfolder"> new folder...</div>
-    <div id="ctx-item-upload" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="upload"> upload file...</div>
-    <div id="ctx-item-cut" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="cut"> cut</div>
-    <div id="ctx-item-copy" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="copy"> copy</div>
-    <div id="ctx-item-paste" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="paste"> paste</div>
-    <div id="ctx-item-rename" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/code.png" alt="rename"> rename...</div>
-    <div id="ctx-item-delete" class="context-item text-danger"><img class="btn-icon-img" src="/resources/icons/files/delete.png" alt="delete"> delete...</div>
-    <div id="ctx-item-delete-folder" class="context-item text-danger"><img class="btn-icon-img" src="/resources/icons/files/delete.png" alt="delete"> delete folder...</div>
-    <div id="ctx-item-media" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/folder.png" alt="media"> media...</div>
-    <div id="ctx-item-system" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/folder.png" alt="system"> system...</div>
-    <div id="ctx-item-deleted" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/delete.png" alt="deleted"> deleted note history...</div>
+    <div id="ctx-item-new" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/new.png" alt="new"> new note...</div>
+    <div id="ctx-item-new-folder" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/newfolder.png" alt="newfolder"> new folder...</div>
+    <div id="ctx-item-upload" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/upload.png" alt="upload"> upload file...</div>
+    <div id="ctx-item-cut" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/cut.png" alt="cut"> cut</div>
+    <div id="ctx-item-copy" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/copy.png" alt="copy"> copy</div>
+    <div id="ctx-item-paste" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/paste.png" alt="paste"> paste</div>
+    <div id="ctx-item-rename" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/rename.png" alt="rename"> rename...</div>
+    <div id="ctx-item-delete" class="context-item text-danger"><img class="btn-icon-img" src="/resources/icons/general/delete.png" alt="delete"> delete...</div>
+    <div id="ctx-item-delete-folder" class="context-item text-danger"><img class="btn-icon-img" src="/resources/icons/general/delete.png" alt="delete"> delete folder...</div>
+    <div id="ctx-dirs-divider" class="context-divider"></div>
+    <div id="ctx-item-system" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/system-folder.png" alt="system"> system...</div>
+    <div id="ctx-item-deleted" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/deleted-tracker.png" alt="deleted"> deleted note history...</div>
   </div>
 
   <!-- editor selection context menu -------------------- -->
   <div id="editor-context-menu" class="context-menu hidden">
-    <div id="ctx-item-editor-cut" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="cut"> cut</div>
-    <div id="ctx-item-editor-copy" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="copy"> copy</div>
-    <div id="ctx-item-editor-paste" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/common.png" alt="paste"> paste</div>
-    <div id="ctx-item-ask-ai" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/text.png" alt="ask"> ask assistant</div>
+    <div id="ctx-item-editor-cut" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/cut.png" alt="cut"> cut</div>
+    <div id="ctx-item-editor-copy" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/copy.png" alt="copy"> copy</div>
+    <div id="ctx-item-editor-paste" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/paste.png" alt="paste"> paste</div>
+    <div id="ctx-item-ask-ai" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/ask.png" alt="ask"> ask assistant</div>
+    <div id="ctx-item-table-add-row" class="context-item hidden"><img class="btn-icon-img" src="/resources/icons/toolbar/table.png" alt="row"> add row</div>
+    <div id="ctx-item-table-add-column" class="context-item hidden"><img class="btn-icon-img" src="/resources/icons/toolbar/table.png" alt="column"> add column</div>
+    <div id="ctx-item-table-remove-row" class="context-item hidden"><img class="btn-icon-img" src="/resources/icons/toolbar/table.png" alt="row"> remove row</div>
+    <div id="ctx-item-table-remove-column" class="context-item hidden"><img class="btn-icon-img" src="/resources/icons/toolbar/table.png" alt="column"> remove column</div>
+  </div>
+
+  <!-- note link context menu -------------------- -->
+  <div id="note-link-context-menu" class="context-menu hidden">
+    <div id="ctx-item-link-open-tab" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/open-tab.png" alt="tab"> open in new tab</div>
+    <div id="ctx-item-link-copy" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/copy.png" alt="copy"> copy link</div>
   </div>
 
   <!-- custom right click context menu for assistant -------------------- -->
   <div id="ai-context-menu" class="context-menu hidden">
-    <div id="ctx-item-copy-chat" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/text.png" alt="copy"> copy conversation</div>
+    <div id="ctx-item-copy-chat" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/copy.png" alt="copy"> copy conversation</div>
   </div>
 
   <div id="ai-bubble-context-menu" class="context-menu hidden">
-    <div id="ctx-item-msg-copy" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/text.png" alt="copy"> copy message</div>
+    <div id="ctx-item-msg-copy" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/copy.png" alt="copy"> copy message</div>
     <div id="ctx-item-msg-reply" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/text.png" alt="reply"> reply</div>
   </div>
 

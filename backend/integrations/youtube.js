@@ -371,8 +371,11 @@ export async function downloadaudio(url, vaultdir, opts = {}) {
   return downloadyoutubemedia(url, vaultdir, { ...opts, media: 'audio' })
 }
 
+// hard ceiling keeps one caption dump inside flash-lite's 1m context with room left --------------------
+const transcriptabsolutemax = 500000
+
 export function captranscript(text, maxchars) {
-  const cap = Math.max(1000, Math.min(maxchars || 24000, 80000))
+  const cap = Math.max(1000, Math.min(maxchars || 24000, transcriptabsolutemax))
   const raw = String(text || '')
   if (raw.length <= cap) {
     return { text: raw, truncated: false, char_count: raw.length }
