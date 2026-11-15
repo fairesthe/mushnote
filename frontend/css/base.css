@@ -64,3 +64,8 @@ body {
   height: 100vh;
   overflow: hidden;
 }
+
+/* shared hide toggle used by login and the editor -------------------- */
+.hidden {
+  display: none !important;
+}

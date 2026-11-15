@@ -76,9 +76,6 @@
   border-bottom: 1px solid var(--border-color);
   background: var(--panel-bg, #1a1a1a);
 }
-.hidden {
-  display: none !important;
-}
 
 /* file and folder drag and drop styles -------------------- */
 .folder-row.is-drag-source {
