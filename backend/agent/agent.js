@@ -275,7 +275,7 @@ function formatreferenceattachment(att, vaultdir) {
 
 // execute chat request with autonomous tool handling --------------------
 export async function runagentchat(prompt, options = {}) {
-  const { active_user_id, is_admin = false, active_note_id, open_tabs = [], history = [], attachments = [], onProgress } = options
+  const { active_user_id, is_admin = false, active_note_id, open_tabs = [], history = [], attachments = [], client_info = '', onProgress } = options
   const conf = loadconfig()
   const vaultdir = getvaultpath(conf)
   const historydir = gethistorypath(conf)
@@ -332,6 +332,7 @@ export async function runagentchat(prompt, options = {}) {
     weatherinfo,
     locationname,
     datestr,
+    clientinfo: client_info,
   })
   const systeminstruction = systempromptpack.text
   const systempromptmeta = systempromptpack.meta

@@ -1,11 +1,26 @@
 /* auth screen container -------------------- */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: pan-y;
+}
+
 .auth-container {
-  min-height: 100vh;
+  height: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 20px;
+  padding: calc(20px + env(safe-area-inset-top, 0px)) 20px calc(20px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+  overscroll-behavior: none;
 }
 
 .auth-container .app-header {
@@ -137,4 +152,279 @@
 
 .checkbox-wrap input[type="checkbox"] {
   cursor: pointer;
+}
+
+/* dialogs on mobile login: position higher up so keyboard leaves plenty of room -------------------- */
+body.dialog-open {
+  position: fixed !important;
+  width: 100% !important;
+  height: 100% !important;
+  top: 0 !important;
+  left: 0 !important;
+  overflow: hidden !important;
+  touch-action: none !important;
+}
+
+@media (max-width: 768px) {
+  body.dialog-open .auth-container {
+    overflow: hidden !important;
+    pointer-events: none;
+  }
+
+  .dialog-overlay {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    align-items: flex-start !important;
+    padding-top: calc(14vh + env(safe-area-inset-top, 0px)) !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
+    touch-action: none !important;
+  }
+
+  .dialog-box {
+    margin: 0 auto;
+    position: relative;
+    top: 0;
+  }
+}
+
+/* mobile pwa install banner -------------------- */
+.pwa-install-banner {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 12px;
+  right: 12px;
+  max-width: 440px;
+  margin: 0 auto;
+  z-index: 1000;
+  background-color: #101010;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  animation: pwa-slide-down 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pwa-slide-down {
+  from {
+    transform: translateY(-24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.pwa-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.pwa-banner-applogo {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.pwa-banner-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.pwa-banner-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--accent-color, #ffffff);
+  line-height: 1.2;
+}
+
+.pwa-banner-desc {
+  font-size: 11.5px;
+  color: var(--muted-color, #888888);
+  line-height: 1.2;
+  margin-top: 2px;
+}
+
+.pwa-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: #1c1c1c;
+  color: #ededed;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.pwa-banner-btn:hover {
+  background-color: #282828;
+  border-color: #444444;
+}
+
+.pwa-banner-icon {
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+  filter: var(--icon-accent-filter, none);
+}
+
+.pwa-banner-close {
+  background: transparent;
+  border: none;
+  color: #777777;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+  margin-left: -2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.pwa-banner-close:hover {
+  color: #ffffff;
+}
+
+/* mobile pwa instructions sheet flying in from bottom -------------------- */
+.pwa-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.65);
+  z-index: 2000;
+  animation: pwa-fade 0.2s ease;
+}
+
+@keyframes pwa-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.pwa-instructions-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2001;
+  background-color: #111111;
+  border-top: 1px solid var(--border-color);
+  border-radius: 16px 16px 0 0;
+  padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  animation: pwa-sheet-flyin 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 540px;
+  margin: 0 auto;
+}
+
+@keyframes pwa-sheet-flyin {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.pwa-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.pwa-sheet-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pwa-sheet-applogo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.pwa-sheet-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.pwa-sheet-close-btn {
+  background: transparent;
+  border: none;
+  color: #888888;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.pwa-sheet-close-btn:hover {
+  color: #ffffff;
+}
+
+.pwa-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pwa-step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background-color: #0c0c0c;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.pwa-step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: #222222;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.pwa-step-text {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #cccccc;
+}
+
+.pwa-step-text strong {
+  color: #ffffff;
+}
+
+.pwa-sheet-hint {
+  margin-top: 14px;
+  font-size: 12px;
+  color: #666666;
+  text-align: center;
 }

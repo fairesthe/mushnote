@@ -1,7 +1,16 @@
 import { api } from '../core/api.js'
 import { initspellcheckdisabled } from '../core/spellcheck.js'
+import { pickworkspacepath, initmobilekeyboard } from '../core/mobile.js'
 
 initspellcheckdisabled()
+initmobilekeyboard()
+
+// register service worker for pwa installability --------------------
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {})
+  })
+}
 
 // login page state and elements --------------------
 let selecteduser = null
@@ -36,7 +45,7 @@ async function checkauth() {
   try {
     const res = await api('/api/auth/me')
     if (res && res.user) {
-      window.location.replace('/editor.html')
+      window.location.replace(pickworkspacepath())
       return
     }
   } catch {}
@@ -77,9 +86,12 @@ async function loadusers() {
       `
 
       // clicking card prompts password --------------------
-      card.addEventListener('click', () => {
+      const handletrigger = (e) => {
+        e.preventDefault()
         openpassworddialog(user)
-      })
+      }
+      card.addEventListener('touchend', handletrigger)
+      card.addEventListener('click', handletrigger)
 
       userslist.appendChild(card)
     }
@@ -110,14 +122,26 @@ function openpassworddialog(user) {
     pwdconfirminput.required = true
   }
 
+  document.body.classList.add('dialog-open')
   passworddialog.classList.remove('hidden')
-  pwdinput.focus()
+  window.scrollTo(0, 0)
+  // immediate focus during the touch interaction avoids safari auto pan --------------------
+  if (pwdinput) {
+    try {
+      pwdinput.focus({ preventScroll: true })
+    } catch {}
+  }
 }
 
 // close password dialog --------------------
 function closepassworddialog() {
+  if (pwdinput) pwdinput.blur()
+  if (pwdconfirminput) pwdconfirminput.blur()
   passworddialog.classList.add('hidden')
+  document.body.classList.remove('dialog-open')
   selecteduser = null
+  window.scrollTo(0, 0)
+  void document.body.offsetHeight
 }
 
 if (btncancel) {
@@ -164,7 +188,7 @@ if (passwordform) {
         })
       })
 
-      window.location.replace('/editor.html')
+      window.location.replace(pickworkspacepath())
     } catch (err) {
       errormsg.textContent = err.message || 'login failed'
       errormsg.classList.remove('hidden')
@@ -174,3 +198,124 @@ if (passwordform) {
 
 // boot login screen --------------------
 checkauth()
+initpwainstall()
+
+// dismiss loading screen once login screen elements populate --------------------
+window.addEventListener('load', () => {
+  dismissloadingscreen()
+})
+
+function dismissloadingscreen() {
+  const loader = document.getElementById('app-loading-screen')
+  if (!loader) return
+  requestAnimationFrame(() => {
+    loader.classList.add('is-loaded')
+    setTimeout(() => {
+      loader.remove()
+    }, 320)
+  })
+}
+
+// pwa install banner and instructions sheet --------------------
+function initpwainstall() {
+  const ismobile = window.innerWidth <= 768 || /iphone|ipad|ipod|android/i.test(navigator.userAgent || '')
+  const isstandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+  if (!ismobile || isstandalone) return
+
+  const dismissed = sessionStorage.getItem('mushnote_pwa_dismissed')
+  if (dismissed === 'true') return
+
+  const banner = document.getElementById('pwa-install-banner')
+  const btninstall = document.getElementById('btn-pwa-install')
+  const btnclose = document.getElementById('btn-pwa-banner-close')
+  const backdrop = document.getElementById('pwa-sheet-backdrop')
+  const sheet = document.getElementById('pwa-instructions-sheet')
+  const sheetbody = document.getElementById('pwa-sheet-body')
+  const sheetsclose = document.getElementById('btn-pwa-sheet-close')
+  if (!banner || !btninstall || !btnclose) return
+
+  let deferredprompt = null
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault()
+    deferredprompt = e
+  })
+
+  banner.classList.remove('hidden')
+
+  btnclose.addEventListener('click', () => {
+    banner.classList.add('hidden')
+    sessionStorage.setItem('mushnote_pwa_dismissed', 'true')
+  })
+
+  function closesheet() {
+    backdrop?.classList.add('hidden')
+    sheet?.classList.add('hidden')
+  }
+
+  function opensheet() {
+    const ua = navigator.userAgent || ''
+    const isios = /iphone|ipad|ipod/i.test(ua)
+    const issamsung = /samsungbrowser/i.test(ua)
+    const ischrome = /chrome|crios/i.test(ua)
+
+    let steps = []
+    if (isios) {
+      steps = [
+        'tap the <strong>share button</strong> in safari (box with arrow pointing up)',
+        'scroll down and tap <strong>add to home screen</strong>',
+        'tap <strong>add</strong> on the top right to finish'
+      ]
+    } else if (issamsung) {
+      steps = [
+        'tap the <strong>menu icon</strong> (three lines or dots at bottom/top)',
+        'tap <strong>add page to</strong> and select <strong>home screen</strong>',
+        'confirm by tapping <strong>add / install</strong>'
+      ]
+    } else if (ischrome) {
+      steps = [
+        'tap the <strong>three dots menu</strong> on top right',
+        'select <strong>install app</strong> or <strong>add to home screen</strong>',
+        'confirm the installation prompt'
+      ]
+    } else {
+      steps = [
+        'open your browser <strong>menu / options</strong>',
+        'select <strong>install app</strong> or <strong>add to home screen</strong>',
+        'confirm installation'
+      ]
+    }
+
+    if (sheetbody) {
+      sheetbody.innerHTML = `
+        <div class="pwa-step-list">
+          ${steps.map((s, idx) => `
+            <div class="pwa-step-item">
+              <span class="pwa-step-num">${idx + 1}</span>
+              <span class="pwa-step-text">${s}</span>
+            </div>
+          `).join('')}
+        </div>
+        <p class="pwa-sheet-hint">once installed mushnote runs in standalone full-screen mode</p>
+      `
+    }
+
+    backdrop?.classList.remove('hidden')
+    sheet?.classList.remove('hidden')
+  }
+
+  btninstall.addEventListener('click', async () => {
+    if (deferredprompt) {
+      deferredprompt.prompt()
+      const choice = await deferredprompt.userChoice
+      if (choice?.outcome === 'accepted') {
+        banner.classList.add('hidden')
+      }
+      deferredprompt = null
+    } else {
+      opensheet()
+    }
+  })
+
+  backdrop?.addEventListener('click', closesheet)
+  sheetsclose?.addEventListener('click', closesheet)
+}

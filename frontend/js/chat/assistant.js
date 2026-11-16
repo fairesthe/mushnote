@@ -1,4 +1,5 @@
 import { api, resolveaccent } from '../core/api.js'
+import { ismobilemode } from '../core/mobile.js'
 import { state } from '../core/state.js'
 import { loadnotes, navigatefolder, clearalldraghighlights, getfileicon } from '../workspace/files.js'
 import {
@@ -574,6 +575,20 @@ function renderattachmentspreview() {
 // auto resize textarea on input --------------------
 export function resizeaiinput() {
   if (!aiinput) return
+  const ismobile = ismobilemode()
+  if (ismobile) {
+    if (!aiinput.value) {
+      aiinput.style.height = '20px'
+      aiinput.style.overflowY = 'hidden'
+      return
+    }
+    aiinput.style.height = '0px'
+    const next = Math.min(Math.max(aiinput.scrollHeight, 20), 60)
+    aiinput.style.height = `${next}px`
+    aiinput.style.overflowY = next >= 60 ? 'auto' : 'hidden'
+    return
+  }
+
   const maxh = 140
   const line = parseFloat(getComputedStyle(aiinput).lineHeight)
   const minh = Number.isFinite(line) && line > 0 ? Math.ceil(line) : 20
@@ -1983,7 +1998,11 @@ export function initassistant() {
       scheduledraftsave()
     })
     aiinput.addEventListener('keydown', (e) => {
+      // on mobile, enter creates a newline and sending is handled by the send button --------------------
       if (e.key === 'Enter' && !e.shiftKey) {
+        if (ismobilemode()) {
+          return
+        }
         e.preventDefault()
         const prompt = aiinput.value?.trim() || ''
         if (prompt || currentattachments.length > 0) {

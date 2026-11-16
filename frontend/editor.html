@@ -2,9 +2,48 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="mushnote">
   <title>mushnote</title>
-  <link rel="icon" type="image/png" href="/logo.png">
+  <link rel="icon" type="image/png" href="/applogo-192.png">
+  <link rel="apple-touch-icon" href="/applogo-512.png">
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    /* zero fouc instant black base and app loader -------------------- */
+    html, body {
+      background-color: #000000 !important;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+    #app-loading-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 999999;
+      background-color: #000000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.28s ease, visibility 0.28s ease;
+      pointer-events: all;
+    }
+    #app-loading-screen.is-loaded {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    #app-loading-logo {
+      width: 64px;
+      height: 64px;
+      border-radius: 14px;
+      object-fit: cover;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+  </style>
   <!-- order matters, later files win ties -------------------- -->
   <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/base.css">
@@ -20,9 +59,15 @@
   <link rel="stylesheet" href="css/chat.css">
   <link rel="stylesheet" href="css/viewers.css">
   <link rel="stylesheet" href="css/upload.css">
+  <link rel="stylesheet" href="css/mobile.css">
   <link rel="stylesheet" href="/vendor/katex/katex.min.css">
 </head>
-<body>
+<body style="background-color: #000000;">
+  <!-- app launch loading screen over everything -------------------- -->
+  <div id="app-loading-screen" aria-label="loading">
+    <img id="app-loading-logo" src="/applogo-192.png" alt="mushnote">
+  </div>
+
   <!-- workspace view two column layout -------------------- -->
   <div id="workspace-view" class="workspace-layout">
     <!-- left column directory tree and user -------------------- -->
@@ -44,6 +89,7 @@
         <div class="folder-quick-nav" id="folder-quick-nav">
           <button type="button" id="btn-folder-home" class="folder-quick-btn" title="you can drag to me too!"><img class="folder-quick-icon" src="/resources/icons/general/home.png" alt=""> home</button>
           <button type="button" id="btn-folder-media" class="folder-quick-btn" title="you can drag to me too!"><img class="folder-quick-icon" src="/resources/icons/general/media.png" alt=""> media</button>
+          <button type="button" id="btn-folder-more" class="folder-quick-btn folder-quick-more" title="more folder actions" aria-label="more folder actions"><img class="folder-quick-icon" src="/resources/icons/general/new.png" alt=""> more</button>
         </div>
 
         <nav class="folder-nav" id="folder-nav-pane">
@@ -470,6 +516,22 @@
     <div id="ctx-item-msg-copy" class="context-item"><img class="btn-icon-img" src="/resources/icons/general/copy.png" alt="copy"> copy message</div>
     <div id="ctx-item-msg-reply" class="context-item"><img class="btn-icon-img" src="/resources/icons/files/text.png" alt="reply"> reply</div>
   </div>
+
+  <!-- mobile bottom panels: files note ai -------------------- -->
+  <nav id="mobile-bottom-nav" class="mobile-bottom-nav" aria-label="mobile panels">
+    <button type="button" class="mobile-nav-btn" data-panel="files" title="files">
+      <img src="/resources/icons/files/folder.png" alt="">
+      <span>files</span>
+    </button>
+    <button type="button" class="mobile-nav-btn" data-panel="note" title="note">
+      <img src="/resources/icons/files/text.png" alt="">
+      <span>note</span>
+    </button>
+    <button type="button" class="mobile-nav-btn" data-panel="ai" title="assistant">
+      <img src="/resources/icons/general/bot.png" alt="">
+      <span>ai</span>
+    </button>
+  </nav>
 
   <script src="js/core/main.js" type="module"></script>
 </body>

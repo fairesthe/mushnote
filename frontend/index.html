@@ -2,15 +2,61 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="mushnote">
   <title>mushnote - login</title>
-  <link rel="icon" type="image/png" href="/logo.png">
+  <link rel="icon" type="image/png" href="/applogo-192.png">
+  <link rel="apple-touch-icon" href="/applogo-512.png">
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    /* zero fouc instant black base and app loader -------------------- */
+    html, body {
+      background-color: #000000 !important;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      touch-action: pan-y;
+      overscroll-behavior: none;
+    }
+    #app-loading-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 999999;
+      background-color: #000000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.28s ease, visibility 0.28s ease;
+      pointer-events: all;
+    }
+    #app-loading-screen.is-loaded {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+    #app-loading-logo {
+      width: 64px;
+      height: 64px;
+      border-radius: 14px;
+      object-fit: cover;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+  </style>
   <link rel="stylesheet" href="css/fonts.css">
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/auth.css">
   <link rel="stylesheet" href="css/ui.css">
 </head>
-<body>
+<body style="background-color: #000000;">
+  <!-- app launch loading screen over everything -------------------- -->
+  <div id="app-loading-screen" aria-label="loading">
+    <img id="app-loading-logo" src="/applogo-192.png" alt="mushnote">
+  </div>
+
   <!-- auth container -------------------- -->
   <div id="auth-container" class="auth-container">
     <header class="app-header">
@@ -29,38 +75,71 @@
         </div>
       </div>
 
-      <!-- password dialog -------------------- -->
-      <div id="password-dialog" class="dialog-overlay hidden">
-        <div class="dialog-box">
-          <div class="dialog-user-header">
-            <img id="dialog-avatar" class="dialog-avatar" src="" alt="avatar">
-            <div>
-              <h3 id="dialog-user-name" class="dialog-title"></h3>
-              <p id="dialog-subtext" class="dialog-sub"></p>
-            </div>
-          </div>
-
-          <form id="password-form" class="auth-form">
-            <div class="input-group">
-              <label id="pwd-label" for="pwd-input">password</label>
-              <input type="password" id="pwd-input" autocomplete="current-password" required autofocus spellcheck="false">
-            </div>
-
-            <div id="confirm-group" class="input-group hidden">
-              <label for="pwd-confirm-input">confirm password</label>
-              <input type="password" id="pwd-confirm-input" autocomplete="new-password" spellcheck="false">
-            </div>
-
-            <div id="error-message" class="error-text hidden"></div>
-
-            <div class="dialog-actions">
-              <button type="button" id="btn-cancel" class="btn secondary">cancel</button>
-              <button type="submit" id="btn-submit" class="btn primary">continue</button>
-            </div>
-          </form>
-        </div>
       </div>
     </main>
+  </div>
+
+  <!-- password dialog moved outside auth-container to avoid nested fixed-scroll collisions -------------------- -->
+  <div id="password-dialog" class="dialog-overlay hidden">
+    <div class="dialog-box">
+      <div class="dialog-user-header">
+        <img id="dialog-avatar" class="dialog-avatar" src="" alt="avatar">
+        <div>
+          <h3 id="dialog-user-name" class="dialog-title"></h3>
+          <p id="dialog-subtext" class="dialog-sub"></p>
+        </div>
+      </div>
+
+      <form id="password-form" class="auth-form">
+        <div class="input-group">
+          <label id="pwd-label" for="pwd-input">password</label>
+          <input type="password" id="pwd-input" autocomplete="current-password" required autofocus spellcheck="false">
+        </div>
+
+        <div id="confirm-group" class="input-group hidden">
+          <label for="pwd-confirm-input">confirm password</label>
+          <input type="password" id="pwd-confirm-input" autocomplete="new-password" spellcheck="false">
+        </div>
+
+        <div id="error-message" class="error-text hidden"></div>
+
+        <div class="dialog-actions">
+          <button type="button" id="btn-cancel" class="btn secondary">cancel</button>
+          <button type="submit" id="btn-submit" class="btn primary">continue</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- mobile pwa install banner -------------------- -->
+  <div id="pwa-install-banner" class="pwa-install-banner hidden">
+    <div class="pwa-banner-content">
+      <img class="pwa-banner-applogo" src="/applogo-192.png" alt="mushnote">
+      <div class="pwa-banner-info">
+        <span class="pwa-banner-title">mushnote</span>
+        <span class="pwa-banner-desc">install for fullscreen app</span>
+      </div>
+      <button type="button" id="btn-pwa-install" class="pwa-banner-btn" title="install mushnote">
+        <img class="pwa-banner-icon" src="/resources/icons/tools/tool-download.png" alt="">
+        <span>install</span>
+      </button>
+      <button type="button" id="btn-pwa-banner-close" class="pwa-banner-close" aria-label="close" title="dismiss">&times;</button>
+    </div>
+  </div>
+
+  <!-- mobile pwa install instructions sheet -------------------- -->
+  <div id="pwa-sheet-backdrop" class="pwa-sheet-backdrop hidden"></div>
+  <div id="pwa-instructions-sheet" class="pwa-instructions-sheet hidden">
+    <div class="pwa-sheet-header">
+      <div class="pwa-sheet-title-wrap">
+        <img class="pwa-sheet-applogo" src="/applogo-192.png" alt="mushnote">
+        <h3 class="pwa-sheet-title">install mushnote</h3>
+      </div>
+      <button type="button" id="btn-pwa-sheet-close" class="pwa-sheet-close-btn" aria-label="close">&times;</button>
+    </div>
+    <div class="pwa-sheet-body" id="pwa-sheet-body">
+      <!-- populated dynamically with os instructions -------------------- -->
+    </div>
   </div>
 
   <script src="js/workspace/login.js" type="module"></script>

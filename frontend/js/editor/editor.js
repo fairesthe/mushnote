@@ -35,6 +35,7 @@ import {
   bindfiledownloadonce
 } from './media/media.js'
 import { ismarkdownfile, isnoteidmatch } from './noteutils.js'
+import { ismobilemode, setmobilepanel } from '../core/mobile.js'
 import { clearpinnededitorselection, closeeditorcontextmenu, initeditoraskaimenu, initeditorselectionpin } from './selection.js'
 import {
   resolveauthorcolor,
@@ -228,12 +229,19 @@ export async function opennote(noteid, options = {}) {
     document.title = `${tabname} - mushnote`
   }
   const opts = typeof options === 'boolean' ? { force: options } : (options || {})
-  const {
+  let {
     newtab = false,
     replacecurrent = true,
     switchfolder = true,
     fromhistory = false,
   } = opts
+
+  // mobile keeps a single tab -- any open becomes a switch or replace --------------------
+  const mobile = ismobilemode()
+  if (mobile) {
+    newtab = false
+    replacecurrent = true
+  }
 
   const prevactive = state.activenoteid
   let prevslot = prevactive
@@ -242,7 +250,21 @@ export async function opennote(noteid, options = {}) {
   const alreadyopen = state.opentabs.some((t) => isnoteidmatch(t, noteid))
 
   // manage open tabs list --------------------
-  if (fromhistory && prevslot >= 0) {
+  if (mobile) {
+    if (alreadyopen) {
+      // switch to existing
+    } else if (state.opentabs.length === 0) {
+      state.opentabs = [noteid]
+    } else {
+      const slot = prevslot >= 0 ? prevslot : 0
+      if (prevactive && !isnoteidmatch(prevactive, noteid)) {
+        pushtabhistory(slot, prevactive)
+      }
+      state.opentabs = [noteid]
+      // drop extra slot histories from a desktop session --------------------
+      while (state.tabslothistories.length > 1) state.tabslothistories.pop()
+    }
+  } else if (fromhistory && prevslot >= 0) {
     // restore prior note into this same tab slot --------------------
     state.opentabs[prevslot] = noteid
     for (let i = state.opentabs.length - 1; i >= 0; i--) {
@@ -276,6 +298,7 @@ export async function opennote(noteid, options = {}) {
 
   state.activenoteid = noteid
   rendertabs()
+  if (mobile) setmobilepanel('note')
 
   if (ispreview) {
     if (emptystate) emptystate.classList.add('hidden')

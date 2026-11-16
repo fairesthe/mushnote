@@ -1,5 +1,6 @@
 import { api } from '../core/api.js'
 import { state } from '../core/state.js'
+import { ismobilemode, currentworkspacepath } from '../core/mobile.js'
 import {
   opennote,
   closenote,
@@ -576,9 +577,12 @@ export function renderfolderview() {
     row.innerHTML = `
       <img class="row-icon-img" src="/resources/icons/files/folder.png" alt="folder">
       <span class="row-name">${foldername}</span>
+      <button type="button" class="row-more-btn" title="more" aria-label="more folder actions">\u22ef</button>
       <span class="row-arrow">></span>
     `
+    bindrowmorebtn(row.querySelector('.row-more-btn'), null, fullfolderpath)
     row.addEventListener('click', (e) => {
+      if (e.target.closest('.row-more-btn')) return
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault()
         e.stopPropagation()
@@ -663,9 +667,12 @@ export function renderfolderview() {
     row.innerHTML = `
       <img class="row-icon-img" src="${iconpath}" alt="file">
       <span class="row-name">${file.name}</span>
+      <button type="button" class="row-more-btn" title="more" aria-label="more file actions">\u22ef</button>
     `
+    bindrowmorebtn(row.querySelector('.row-more-btn'), file.id, null)
     // click opens or switches tab never closes from the file list --------------------
     row.addEventListener('click', (e) => {
+      if (e.target.closest('.row-more-btn')) return
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault()
         e.stopPropagation()
@@ -733,7 +740,7 @@ export function renderfolderview() {
     folderitems.appendChild(row)
   }
 
-  if (!state.currentfolder) {
+  if (!state.currentfolder && !ismobilemode()) {
     const hint = document.createElement('div')
     hint.className = 'folder-hint'
     hint.textContent = '(right click for more)'
@@ -1002,6 +1009,43 @@ async function submitrowedit() {
   }
 }
 
+// open menu anchored under a button (mobile has no right click) --------------------
+export function opencontextmenunear(el, noteid = null, folderpath = null) {
+  if (!el?.getBoundingClientRect) {
+    opencontextmenu(16, 72, noteid, folderpath)
+    return
+  }
+  const rect = el.getBoundingClientRect()
+  const pad = 8
+  const mw = 200
+  const mh = 320
+  let x = rect.left
+  let y = rect.bottom + 4
+  if (x + mw > window.innerWidth - pad) x = Math.max(pad, window.innerWidth - mw - pad)
+  if (y + mh > window.innerHeight - pad) y = Math.max(pad, rect.top - 4)
+  opencontextmenu(x, y, noteid, folderpath)
+}
+
+function bindrowmorebtn(btn, noteid = null, folderpath = null) {
+  if (!btn) return
+  btn.addEventListener('mousedown', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+  })
+  btn.addEventListener('click', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (noteid) {
+      if (!selecteditems.has(noteid)) ensureitemselected(noteid, 'file')
+    } else if (folderpath && folderpath !== state.currentfolder) {
+      if (!selecteditems.has(folderpath)) ensureitemselected(folderpath, 'folder')
+    } else {
+      clearfileselection()
+    }
+    opencontextmenunear(btn, noteid, folderpath)
+  })
+}
+
 // open custom context menu --------------------
 export function opencontextmenu(x, y, noteid = null, folderpath = null) {
   contexttargetnoteid = noteid
@@ -1229,6 +1273,21 @@ export function initfiles() {
     }
     loadnotes()
   })
+
+  // mobile more button -- same menu as empty-area right click --------------------
+  const btnfoldermore = document.getElementById('btn-folder-more')
+  if (btnfoldermore) {
+    btnfoldermore.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+    })
+    btnfoldermore.addEventListener('click', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      clearfileselection()
+      opencontextmenunear(btnfoldermore, null, state.currentfolder)
+    })
+  }
 
   // right click on file pane empty area --------------------
   const targetempty = foldernavpane || folderitems
@@ -1558,9 +1617,16 @@ export async function loadnotes() {
           restoretabslothistories(saved.tabslothistories, saved.opentabs, kept, historyentryok)
         }
         await opennote(notetoopen, { newtab: true, switchfolder: true })
-        window.history.replaceState({}, '', '/editor.html')
+        window.history.replaceState({}, '', currentworkspacepath())
       } else if (saved && saved.opentabs && saved.opentabs.length > 0) {
-        const existingtabs = saved.opentabs.filter(t => isvalidopentab(t, state.allnotes))
+        let existingtabs = saved.opentabs.filter(t => isvalidopentab(t, state.allnotes))
+        // mobile only keeps one tab from a restored desktop session --------------------
+        if (ismobilemode() && existingtabs.length > 1) {
+          const preferred = (saved.activenoteid && existingtabs.some(t => isnoteidmatch(t, saved.activenoteid)))
+            ? saved.activenoteid
+            : existingtabs[0]
+          existingtabs = [preferred]
+        }
         state.opentabs = existingtabs
         restoretabslothistories(saved.tabslothistories, saved.opentabs, existingtabs, historyentryok)
         if (saved.currentfolder) {

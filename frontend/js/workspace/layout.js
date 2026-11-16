@@ -1,5 +1,6 @@
 import { state } from '../core/state.js'
 import { captureeditorselectionforai } from '../editor/editor.js'
+import { ismobilemode, setmobilepanel, getmobilepanel } from '../core/mobile.js'
 
 // dom elements for layout --------------------
 const sidebarpane = document.getElementById('sidebar-pane')
@@ -40,6 +41,13 @@ function syncaiinputsize() {
 // open ai drawer and focus chat input --------------------
 export function ensureaidraweropen() {
   if (!aidrawer) return
+  if (ismobilemode()) {
+    setmobilepanel('ai')
+    captureeditorselectionforai()
+    syncaiinputsize()
+    if (aiinput) aiinput.focus()
+    return
+  }
   if (aidrawer.classList.contains('is-collapsed')) {
     aidrawer.classList.remove('is-collapsed')
     updatetogglebuttons()
@@ -81,8 +89,46 @@ export function updatetogglebuttons() {
   }
 }
 
+function initmobilenav() {
+  const nav = document.getElementById('mobile-bottom-nav')
+  if (!nav) return
+  nav.querySelectorAll('.mobile-nav-btn').forEach((btn) => {
+    const handlepanelclick = (e) => {
+      const panel = btn.dataset.panel
+      if (!panel) return
+      // focus synchronously inside the touch event so webkit opens software keyboard --------------------
+      if (panel === 'ai') {
+        const aiinput = document.getElementById('ai-input')
+        if (aiinput) {
+          try {
+            aiinput.focus({ preventScroll: true })
+          } catch {}
+        }
+      }
+      setmobilepanel(panel)
+      if (panel === 'ai') {
+        captureeditorselectionforai()
+      }
+      updatetogglebuttons()
+    }
+    btn.addEventListener('touchend', (e) => {
+      e.preventDefault()
+      handlepanelclick(e)
+    })
+    btn.addEventListener('click', handlepanelclick)
+  })
+  // default: ai assistant on mobile --------------------
+  setmobilepanel(getmobilepanel() || 'ai')
+  updatetogglebuttons()
+}
+
 // initialize layout toggles and resizers --------------------
 export function initlayout() {
+  if (ismobilemode()) {
+    initmobilenav()
+    return
+  }
+
   restoreaidraweropen()
   updatetogglebuttons()
 

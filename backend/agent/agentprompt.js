@@ -102,6 +102,7 @@ export function buildsystemprompt(options = {}) {
     weatherinfo = '',
     locationname = '',
     datestr = '',
+    clientinfo = '',
   } = options
 
   const active = activeuser ? activeuser.name || activeuser.id : 'unknown'
@@ -114,6 +115,7 @@ export function buildsystemprompt(options = {}) {
       ? ` | active: [${activenoteid}] (html preview)`
       : ` | active: [${activenoteid}]`)
     : ''
+  const clientline = clientinfo ? ` | client: ${clientinfo}` : ''
   const locationline = locationname ? `\n- location: ${locationname}` : ''
   const weatherline = weatherinfo ? `\n- weather: ${weatherinfo}` : ''
   const userpersonalitypath = `system/${activeuserid}/personality.md`
@@ -136,7 +138,7 @@ ${otheruserpaths ? `- other users: ${otheruserpaths}` : '- other users: none'}
     : ''
 
   const sessionblock = `Context:
-- mushnote | assistant: ${ainame} | user: ${active} | users: ${userlist} | now: ${datestr}${tabslist}${currentnote}${locationline}${weatherline}`
+- mushnote | assistant: ${ainame} | user: ${active} | users: ${userlist} | now: ${datestr}${clientline}${tabslist}${currentnote}${locationline}${weatherline}`
 
   const activenoteheader =
     activenotemode === 'full'
@@ -172,7 +174,7 @@ ${chatrules}${memoryblock}${activeblock}${userpersonalitysection}${aipersonality
       active_note_mode: activenotemode,
       active_note_id: activenoteid || null,
       user_personality_path: userpersonalitypath,
-      session: { ainame, active_user: active, userlist, datestr, opentabs, locationname, weatherinfo },
+      session: { ainame, active_user: active, userlist, datestr, opentabs, locationname, weatherinfo, clientinfo },
     },
   }
 }

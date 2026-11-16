@@ -1,4 +1,5 @@
 import { state } from '../core/state.js'
+import { ismobilemode } from '../core/mobile.js'
 import {
   opennote,
   closenote,
@@ -311,6 +312,14 @@ function computeslotoffsets(srcidx, tgtidx, items, gap = tabgap) {
 // render draggable tab bar --------------------
 export function rendertabs() {
   if (!tabstrack || !editortabsbar) return
+
+  // mobile uses a single note panel -- no multi tab chrome --------------------
+  if (ismobilemode()) {
+    editortabsbar.classList.add('hidden')
+    tabstrack.innerHTML = ''
+    synctabslothistories()
+    return
+  }
 
   // rebuilding mid drag yanks the tab out from under the pointer so wait for the drop --------------------
   if (draggingtab) {

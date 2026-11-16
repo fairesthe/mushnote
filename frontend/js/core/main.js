@@ -1,5 +1,6 @@
 import { api, applytheme, resolveaccent } from './api.js'
 import { state } from './state.js'
+import { applymobileboot } from './mobile.js'
 import { initfiles, loadnotes, closecontextmenu } from '../workspace/files.js'
 import { initassistant, loadaiinfo } from '../chat/assistant.js'
 import { initconversationstorage } from '../chat/conversations.js'
@@ -8,6 +9,16 @@ import { initsidebarsettings } from '../workspace/settings.js'
 import { initpreview } from '../workspace/preview.js'
 import { initosfiledrop } from '../workspace/osfiledrop.js'
 import { initspellcheckdisabled } from './spellcheck.js'
+
+// freeze mobile vs desktop from the url before any layout work --------------------
+applymobileboot()
+
+// register service worker for pwa installability --------------------
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {})
+  })
+}
 
 // dom elements for workspace header --------------------
 const loggedavatar = document.getElementById('logged-avatar')
@@ -52,10 +63,24 @@ async function boot() {
     initsidebarsettings()
 
     loadaiinfo()
-    loadnotes()
+    await loadnotes()
   } catch (err) {
     console.error('ui initialization error', err)
+  } finally {
+    dismissloadingscreen()
   }
+}
+
+function dismissloadingscreen() {
+  const loader = document.getElementById('app-loading-screen')
+  if (!loader) return
+  // allow browser a frame to commit loaded styles and layout before fading --------------------
+  requestAnimationFrame(() => {
+    loader.classList.add('is-loaded')
+    setTimeout(() => {
+      loader.remove()
+    }, 320)
+  })
 }
 
 // global keyboard shortcuts --------------------

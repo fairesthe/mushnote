@@ -93,7 +93,17 @@ app.use('/preview', (req, res, next) => {
 })
 
 app.use('/logo.png', (req, res) => res.sendFile(path.join(resourcesdir, 'logo.png')))
+app.use('/applogo-192.png', (req, res) => res.sendFile(path.join(resourcesdir, 'applogo-192.png')))
+app.use('/applogo-512.png', (req, res) => res.sendFile(path.join(resourcesdir, 'applogo-512.png')))
 app.use('/favicon.ico', (req, res) => res.sendFile(path.join(resourcesdir, 'logo.png')))
+app.use('/manifest.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/manifest+json')
+  res.sendFile(path.join(frontenddir, 'manifest.json'))
+})
+app.use('/sw.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript')
+  res.sendFile(path.join(frontenddir, 'sw.js'))
+})
 app.use(express.static(frontenddir))
 
 // friendly html page routes --------------------
@@ -102,6 +112,11 @@ app.get('/login', (req, res) => {
 })
 
 app.get('/editor', (req, res) => {
+  res.sendFile(path.join(frontenddir, 'editor.html'))
+})
+
+// same shell as editor -- mobile mode is decided by the path --------------------
+app.get('/mobile', (req, res) => {
   res.sendFile(path.join(frontenddir, 'editor.html'))
 })
 
@@ -1000,6 +1015,41 @@ app.post('/api/conversations/:id/title', async (req, res) => {
   res.json({ conversation: updated, title })
 })
 
+// parse user agent into readable os device and browser --------------------
+function parseclientinfo(req) {
+  const custom = req.body?.client_info
+  if (custom && typeof custom === 'string') return custom.slice(0, 120)
+
+  const ua = req.headers['user-agent'] || ''
+  if (!ua) return 'unknown'
+
+  let os = 'unknown os'
+  if (/windows phone/i.test(ua)) os = 'Windows Phone'
+  else if (/win64|wow64|windows nt 10/i.test(ua)) os = 'Windows'
+  else if (/windows nt/i.test(ua)) os = 'Windows'
+  else if (/android/i.test(ua)) os = 'Android'
+  else if (/iphone|ipad|ipod/i.test(ua)) os = 'iOS'
+  else if (/macintosh|mac os x/i.test(ua)) os = 'macOS'
+  else if (/linux/i.test(ua)) os = 'Linux'
+
+  let device = 'desktop'
+  if (/samsung.*mobile|sm-[a-z0-9]+/i.test(ua)) device = 'Samsung Galaxy'
+  else if (/pixel/i.test(ua)) device = 'Google Pixel'
+  else if (/iphone/i.test(ua)) device = 'iPhone'
+  else if (/ipad/i.test(ua)) device = 'iPad'
+  else if (/mobile/i.test(ua)) device = 'mobile'
+  else if (/tablet/i.test(ua)) device = 'tablet'
+
+  let browser = 'unknown browser'
+  if (/samsungbrowser/i.test(ua)) browser = 'Samsung Internet'
+  else if (/edg\//i.test(ua)) browser = 'Edge'
+  else if (/firefox|fxios/i.test(ua)) browser = 'Firefox'
+  else if (/chrome|crios/i.test(ua)) browser = 'Chrome'
+  else if (/safari/i.test(ua) && !/chrome/i.test(ua)) browser = 'Safari'
+
+  return `${os}, ${device}, ${browser}`
+}
+
 // gemini agent chat endpoint --------------------
 app.post('/api/agent/chat', async (req, res) => {
   const token = extracttoken(req)
@@ -1007,6 +1057,7 @@ app.post('/api/agent/chat', async (req, res) => {
   const activeuserid = session ? session.user_id : 'wyatt'
   const isadmin = session ? Boolean(session.admin) : false
   const { message = '', history = [], active_note_id, open_tabs = [], attachments = [] } = req.body
+  const clientinfo = parseclientinfo(req)
 
   if (!message && (!attachments || attachments.length === 0)) {
     return res.status(400).json({ error: 'message or attachment is required' })
@@ -1147,6 +1198,7 @@ app.post('/api/agent/chat', async (req, res) => {
       open_tabs,
       history,
       attachments,
+      client_info: clientinfo,
       onProgress: (event, data) => {
         if (event === 'chunk') {
           handlechunk(data.text)
