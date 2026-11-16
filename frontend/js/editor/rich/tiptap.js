@@ -28,10 +28,11 @@ import {
   clearalldraghighlights,
   insertdraggeditemsintoactivenote
 } from '../dragdrop.js'
-import { clearpinnededitorselection, geteditorselectionreference, openeditorselectionmenu } from '../selection.js'
+import { clearpinnededitorselection, geteditorselectionreference, openeditorselectionmenu, showmobileselectionmenu, closeeditorcontextmenu } from '../selection.js'
 import {
   remoteselectionextension,
   pinselectionextension,
+  mobileselectionextension,
   liveflashextension,
   collabundo,
   collabredo,
@@ -80,6 +81,7 @@ export function inittiptapeditor() {
       flashextension,
       liveflashextension,
       pinselectionextension,
+      mobileselectionextension,
       remoteselectionextension,
       linkiconsextension
     ],
@@ -192,6 +194,11 @@ export function inittiptapeditor() {
           return false
         },
         contextmenu: (view, event) => {
+          // on touch / mobile, let native long-press text selection work without hijacking into contextmenu --------------------
+          if (document.body?.classList.contains('is-mobile') || ('ontouchstart' in window && event.pointerType === 'touch')) {
+            return false
+          }
+
           const link = event.target?.closest?.('a')
           if (link) {
             const href = link.getAttribute('data-note-link') || link.getAttribute('href')
@@ -557,6 +564,15 @@ export function inittiptapeditor() {
       if (collabpeerslive()) {
         const { head, anchor } = editor.state.selection
         schedulecursorbroadcast(head, anchor)
+      }
+      // show custom floating menu on mobile under selection --------------------
+      if (document.body?.classList.contains('is-mobile')) {
+        const { from, to } = editor.state.selection
+        if (from !== to) {
+          setTimeout(showmobileselectionmenu, 40)
+        } else {
+          closeeditorcontextmenu()
+        }
       }
     },
     onTransaction: () => {

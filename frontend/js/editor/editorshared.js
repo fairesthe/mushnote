@@ -33,6 +33,7 @@ export const editorbodyel = () => editorcursors?.closest('.editor-body') || docu
 export const flashpluginkey = new PluginKey('flashhighlight')
 export const pinpluginkey = new PluginKey('pinnedselection')
 export const remoteselectionpluginkey = new PluginKey('remoteselection')
+export const mobileselectionpluginkey = new PluginKey('mobileselection')
 export const setremoteselectioneffect = CMStateEffect.define()
 export const setpineffect = CMStateEffect.define()
 export const clearpineffect = CMStateEffect.define()

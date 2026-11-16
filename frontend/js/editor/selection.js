@@ -1,12 +1,15 @@
 import { state } from '../core/state.js'
+import { ismobilemode } from '../core/mobile.js'
 import { Decoration, DecorationSet, CMDecoration, TextSelection, selectionmarkdown } from './rich/tiptap.bundle.js'
 import {
   ed,
   tiptapeditorcontainer,
   noteeditor,
   pinpluginkey,
+  mobileselectionpluginkey,
   setpineffect,
-  clearpineffect
+  clearpineffect,
+  editorbodyel
 } from './editorshared.js'
 import { ismarkdownfile } from './noteutils.js'
 
@@ -380,11 +383,168 @@ function updateeditorcontextmenuitems(hassel, hasaskai, intable = false) {
   if (ctxitemtableremovecolumn) ctxitemtableremovecolumn.classList.toggle('hidden', !intable)
 }
 
+// mobile custom selection decorations and handles --------------------
+let mobilenativehandlestart = null
+let mobilenativehandleend = null
+let isdragginghandle = false
+
+function getormakemobilehandle(isstart) {
+  const id = isstart ? 'mobile-sel-handle-start' : 'mobile-sel-handle-end'
+  let el = document.getElementById(id)
+  if (!el) {
+    el = document.createElement('div')
+    el.id = id
+    el.className = `mobile-selection-handle ${isstart ? 'mobile-selection-handle-start' : 'mobile-selection-handle-end'}`
+    const body = editorbodyel()
+    if (body) body.appendChild(el)
+    el.addEventListener('pointerdown', (e) => onhandlepointerdown(e, isstart))
+  }
+  return el
+}
+
+function removemobilehandles() {
+  const h1 = document.getElementById('mobile-sel-handle-start')
+  const h2 = document.getElementById('mobile-sel-handle-end')
+  if (h1) h1.remove()
+  if (h2) h2.remove()
+}
+
+function onhandlepointerdown(e, isstart) {
+  e.preventDefault()
+  e.stopPropagation()
+  isdragginghandle = true
+  const handle = e.currentTarget
+  handle.setPointerCapture(e.pointerId)
+
+  const onpointermove = (ev) => {
+    if (!isdragginghandle) return
+    ev.preventDefault()
+    if (!ed.tiptapinstance) return
+    const view = ed.tiptapinstance.view
+    const coords = view.posAtCoords({ left: ev.clientX, top: ev.clientY })
+    if (!coords || typeof coords.pos !== 'number') return
+    const pos = coords.pos
+    const { from, to } = view.state.selection
+    let newfrom = from
+    let newto = to
+    if (isstart) {
+      if (pos < to) {
+        newfrom = pos
+      } else {
+        newfrom = to
+        newto = pos
+      }
+    } else {
+      if (pos > from) {
+        newto = pos
+      } else {
+        newto = from
+        newfrom = pos
+      }
+    }
+    if (newfrom !== from || newto !== to) {
+      try {
+        const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, newfrom, newto))
+        view.dispatch(tr)
+        updatemobileselectionui()
+      } catch {}
+    }
+  }
+
+  const onpointerup = (ev) => {
+    isdragginghandle = false
+    try {
+      handle.releasePointerCapture(ev.pointerId)
+    } catch {}
+    handle.removeEventListener('pointermove', onpointermove)
+    handle.removeEventListener('pointerup', onpointerup)
+    handle.removeEventListener('pointercancel', onpointerup)
+  }
+
+  handle.addEventListener('pointermove', onpointermove)
+  handle.addEventListener('pointerup', onpointerup)
+  handle.addEventListener('pointercancel', onpointerup)
+}
+
+export function updatemobileselectionui() {
+  if (!ismobilemode()) {
+    removemobilehandles()
+    return
+  }
+
+  if (!ed.tiptapinstance || !ismarkdownfile(state.activenoteid)) {
+    removemobilehandles()
+    return
+  }
+
+  const view = ed.tiptapinstance.view
+  const sel = view.state.selection
+  if (sel.empty || sel.from === sel.to) {
+    removemobilehandles()
+    try {
+      const tr = view.state.tr.setMeta(mobileselectionpluginkey, { action: 'clear' })
+      view.dispatch(tr)
+    } catch {}
+    return
+  }
+
+  // render our custom highlight decoration --------------------
+  const decos = []
+  view.state.doc.nodesBetween(sel.from, sel.to, (node, pos) => {
+    if (!node.isText) return
+    const nfrom = Math.max(sel.from, pos)
+    const nto = Math.min(sel.to, pos + node.nodeSize)
+    if (nfrom < nto) {
+      decos.push(Decoration.inline(nfrom, nto, { class: 'mobile-custom-selection' }))
+    }
+  })
+  if (decos.length) {
+    const set = DecorationSet.create(view.state.doc, decos)
+    const tr = view.state.tr.setMeta(mobileselectionpluginkey, { action: 'set', decorations: set })
+    view.dispatch(tr)
+  }
+
+  // position drag handles at selection endpoints --------------------
+  const scrollroot = editorbodyel()
+  if (!scrollroot) return
+
+  const startcoords = view.coordsAtPos(sel.from, 1)
+  const endcoords = view.coordsAtPos(sel.to, -1)
+  if (!startcoords || !endcoords) {
+    removemobilehandles()
+    return
+  }
+
+  const rootrect = scrollroot.getBoundingClientRect()
+  const handlestart = getormakemobilehandle(true)
+  const handleend = getormakemobilehandle(false)
+
+  const startleft = startcoords.left - rootrect.left + scrollroot.scrollLeft
+  const starttop = startcoords.top - rootrect.top + scrollroot.scrollTop
+  const endleft = endcoords.left - rootrect.left + scrollroot.scrollLeft
+  const endtop = endcoords.bottom - rootrect.top + scrollroot.scrollTop
+
+  handlestart.style.left = `${startleft}px`
+  handlestart.style.top = `${starttop}px`
+
+  handleend.style.left = `${endleft}px`
+  handleend.style.top = `${endtop}px`
+}
+
 export function closeeditorcontextmenu() {
   if (editorcontextmenu) editorcontextmenu.classList.add('hidden')
   pendingeditorselectionref = null
   editorcontextintable = false
   pendingtablepos = null
+  if (ismobilemode()) {
+    removemobilehandles()
+    if (ed.tiptapinstance) {
+      try {
+        const tr = ed.tiptapinstance.view.state.tr.setMeta(mobileselectionpluginkey, { action: 'clear' })
+        ed.tiptapinstance.view.dispatch(tr)
+      } catch {}
+    }
+  }
 }
 
 export function openeditorselectionmenu(x, y, ref, options = {}) {
@@ -398,15 +558,96 @@ export function openeditorselectionmenu(x, y, ref, options = {}) {
   editorcontextintable = Boolean(options.intable)
   pendingtablepos = typeof options.tablepos === 'number' ? options.tablepos : null
   updateeditorcontextmenuitems(haseditorselection(), !!pendingeditorselectionref, editorcontextintable)
-  editorcontextmenu.style.left = `${x}px`
-  editorcontextmenu.style.top = `${y}px`
+
+  // keep menu within screen bounds horizontally on mobile --------------------
+  let targetx = x
+  let targety = y
+  if (ismobilemode()) {
+    const margin = 8
+    const menuwidth = editorcontextmenu.offsetWidth || 280
+    const screenw = window.innerWidth
+    // keep within left and right viewport edges --------------------
+    targetx = Math.max(margin, Math.min(screenw - menuwidth - margin, targetx))
+  }
+
+  editorcontextmenu.style.left = `${targetx}px`
+  editorcontextmenu.style.top = `${targety}px`
   editorcontextmenu.classList.remove('hidden')
+
+  // second pass horizontally once element dimensions are rendered --------------------
+  if (ismobilemode()) {
+    requestAnimationFrame(() => {
+      const margin = 8
+      const w = editorcontextmenu.offsetWidth
+      let adjx = targetx
+      if (adjx + w > window.innerWidth - margin) {
+        adjx = Math.max(margin, window.innerWidth - w - margin)
+      }
+      editorcontextmenu.style.left = `${adjx}px`
+    })
+  }
   // pin render after menu is up so a cm dispatch mid-contextmenu cant kill the menu --------------------
   if (ed.pinnedselection) {
     try {
       renderpinnededitorselection()
     } catch {}
   }
+}
+
+// compute coordinates immediately under active selection for mobile floating menu --------------------
+export function showmobileselectionmenu() {
+  if (!ismobilemode() || !editorcontextmenu || !state.activenoteid) return
+  const live = readliveeditorselectionpin()
+  if (!live) {
+    if (editorcontextmenu && !editorcontextmenu.classList.contains('hidden')) {
+      closeeditorcontextmenu()
+    }
+    return
+  }
+
+  // update handles and custom highlight on mobile --------------------
+  updatemobileselectionui()
+
+  let rect = null
+  const sel = window.getSelection()
+  if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+    const range = sel.getRangeAt(0)
+    const r = range.getBoundingClientRect()
+    if (r.width > 0 || r.height > 0) rect = r
+  }
+
+  // if native selection rect is empty or unavailable, fallback to tiptap coords --------------------
+  if (!rect && ed.tiptapinstance) {
+    const { from, to } = ed.tiptapinstance.state.selection
+    const c1 = ed.tiptapinstance.view.coordsAtPos(from)
+    const c2 = ed.tiptapinstance.view.coordsAtPos(to)
+    if (c1 && c2) {
+      rect = {
+        left: Math.min(c1.left, c2.left),
+        right: Math.max(c1.right, c2.right),
+        top: Math.min(c1.top, c2.top),
+        bottom: Math.max(c1.bottom, c2.bottom),
+        width: Math.abs(c2.right - c1.left),
+        height: Math.abs(c2.bottom - c1.top)
+      }
+    }
+  }
+
+  let x = 16
+  let y = 100
+  if (rect) {
+    // center horizontally under the selection --------------------
+    const centerx = rect.left + rect.width / 2 - 140
+    x = Math.max(10, Math.min(window.innerWidth - 290, centerx))
+    // position directly below text, allow scrolling off page vertically --------------------
+    y = rect.bottom + 8
+  } else {
+    x = 16
+    y = Math.max(60, window.innerHeight / 2)
+  }
+
+  const ref = geteditorselectionreference()
+  openeditorselectionmenu(x, y, ref)
 }
 
 function runaskaifrommenu(e) {
@@ -464,9 +705,19 @@ export function initeditoraskaimenu() {
     })
   }
 
-  // mousedown so it fires even when menu preventDefault suppresses click quirks --------------------
+  // mousedown and pointerdown so it fires even when menu preventDefault suppresses click quirks --------------------
   if (ctxitemaskai) {
     ctxitemaskai.addEventListener('mousedown', runaskaifrommenu)
+    ctxitemaskai.addEventListener('pointerdown', (e) => {
+      if (ismobilemode()) runaskaifrommenu(e)
+    })
+  }
+
+  // support mobile touch tap on items cleanly --------------------
+  if (editorcontextmenu) {
+    editorcontextmenu.addEventListener('pointerdown', (e) => {
+      e.preventDefault()
+    })
   }
 
   if (ctxitemtableaddrow) {
@@ -516,5 +767,16 @@ export function initeditorselectionpin() {
   attach(document.getElementById('ai-drawer'))
   attach(document.getElementById('resizer-right'))
   attach(document.getElementById('tab-toggle-ai'))
+
+  // track scrolling on editor body so floating toolbar and handles stay in sync with text --------------------
+  const body = editorbodyel()
+  if (body) {
+    body.addEventListener('scroll', () => {
+      if (editorcontextmenu && !editorcontextmenu.classList.contains('hidden') && ismobilemode()) {
+        showmobileselectionmenu()
+      }
+    }, { passive: true })
+  }
 }
+
 

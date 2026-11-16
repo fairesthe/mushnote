@@ -138,6 +138,8 @@ export function initcodemirror() {
           return false
         },
         contextmenu(event, view) {
+          // let mobile native selection work on long press --------------------
+          if (document.body?.classList.contains('is-mobile')) return false
           // consume keep flag whether caret moved or not --------------------
           ed.cmkeepselectionpin = false
           event.preventDefault()

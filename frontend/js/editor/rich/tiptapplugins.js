@@ -19,7 +19,8 @@ import {
   editorcursorscontent,
   flashpluginkey,
   pinpluginkey,
-  remoteselectionpluginkey
+  remoteselectionpluginkey,
+  mobileselectionpluginkey
 } from '../editorshared.js'
 import { ismarkdownfile } from '../noteutils.js'
 import { resolveauthorcolor, createavatarbadge } from '../collab/flash.js'
@@ -80,6 +81,37 @@ export const pinselectionextension = Extension.create({
         props: {
           decorations(state) {
             return pinpluginkey.getState(state)
+          }
+        }
+      })
+    ]
+  }
+})
+
+// custom mobile selection highlight when on touch screen --------------------
+export const mobileselectionextension = Extension.create({
+  name: 'mobileselection',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: mobileselectionpluginkey,
+        state: {
+          init() {
+            return DecorationSet.empty
+          },
+          apply(tr, oldset) {
+            let set = tr.docChanged ? oldset.map(collabmapping(tr).mapping, tr.doc) : oldset
+            const meta = tr.getMeta(mobileselectionpluginkey)
+            if (meta) {
+              if (meta.action === 'set') return meta.decorations
+              if (meta.action === 'clear') return DecorationSet.empty
+            }
+            return set
+          }
+        },
+        props: {
+          decorations(state) {
+            return mobileselectionpluginkey.getState(state)
           }
         }
       })

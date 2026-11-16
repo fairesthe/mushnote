@@ -352,3 +352,116 @@ body.is-mobile .history-viewer-head-actions {
   justify-content: flex-start;
   width: 100%;
 }
+
+/* mobile selection floating toolbar -------------------- */
+body.is-mobile #editor-context-menu {
+  position: fixed;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background-color: var(--panel-overlay, #181818);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  min-width: 0;
+  max-width: calc(100vw - 20px);
+  box-sizing: border-box;
+  z-index: 3000;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  overflow-x: auto;
+}
+
+body.is-mobile #editor-context-menu.hidden {
+  display: none !important;
+}
+
+body.is-mobile #editor-context-menu .context-item {
+  padding: 6px 9px;
+  font-size: 12px;
+  white-space: nowrap;
+  gap: 5px;
+  border-radius: 6px;
+}
+
+body.is-mobile #editor-context-menu .context-item img {
+  width: 14px;
+  height: 14px;
+}
+
+/* tint ask ai button with accent color -------------------- */
+#editor-context-menu #ctx-item-ask-ai {
+  color: var(--accent-color, #ffffff);
+}
+
+#editor-context-menu #ctx-item-ask-ai img {
+  filter: var(--icon-accent-filter, none);
+}
+
+/* suppress ios native selection callout bubbles on editor content while allowing text highlighting -------------------- */
+body.is-mobile .tiptap-editor .ProseMirror,
+body.is-mobile .codemirror-editor,
+body.is-mobile .note-textarea {
+  -webkit-touch-callout: none;
+}
+
+/* avoid double selection on mobile by hiding native selection highlight in favor of our own custom highlight -------------------- */
+body.is-mobile .tiptap-editor .ProseMirror ::selection,
+body.is-mobile .tiptap-editor .ProseMirror::selection,
+body.is-mobile .codemirror-editor .cm-content ::selection,
+body.is-mobile .codemirror-editor .cm-selectionBackground,
+body.is-mobile .note-textarea::selection {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* custom selection highlight on mobile -------------------- */
+.mobile-custom-selection {
+  background-color: var(--highlight-color, rgba(255, 255, 255, 0.35)) !important;
+  border-radius: 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* custom mobile selection drag handles -------------------- */
+.mobile-selection-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: var(--accent-color, #ffffff);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+  touch-action: none;
+  z-index: 2500;
+  transform: translate(-50%, 0);
+  cursor: pointer;
+}
+
+.mobile-selection-handle::after {
+  content: '';
+  position: absolute;
+  top: -12px;
+  left: -12px;
+  right: -12px;
+  bottom: -12px;
+}
+
+.mobile-selection-handle-start {
+  transform: translate(-50%, -100%);
+  border-bottom-right-radius: 0;
+}
+
+.mobile-selection-handle-end {
+  transform: translate(-50%, 0);
+  border-top-left-radius: 0;
+}
+
+body.is-mobile .tiptap-editor .ProseMirror-focused .editor-pinned-selection {
+  background-color: transparent !important;
+}
+
+
+

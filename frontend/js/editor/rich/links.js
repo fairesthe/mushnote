@@ -199,6 +199,7 @@ export function initeditorlinkevents() {
 
   // right click note link shows copy / open menu --------------------
   tiptapeditorcontainer.addEventListener('contextmenu', (e) => {
+    if (document.body?.classList.contains('is-mobile')) return
     const link = e.target.closest('a')
     if (link) {
       const href = link.getAttribute('data-note-link') || link.getAttribute('href') || link.href
@@ -266,6 +267,7 @@ export function initeditorlinkevents() {
     })
 
     editorcontainer.addEventListener('contextmenu', (e) => {
+      if (document.body?.classList.contains('is-mobile')) return
       if (ismarkdownfile(state.activenoteid) && ed.tiptapinstance) return
       e.preventDefault()
       e.stopPropagation()
@@ -275,6 +277,7 @@ export function initeditorlinkevents() {
 
     if (noteeditor) {
       noteeditor.addEventListener('contextmenu', (e) => {
+        if (document.body?.classList.contains('is-mobile')) return
         e.preventDefault()
         e.stopPropagation()
         const ref = geteditorselectionreference()
