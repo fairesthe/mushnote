@@ -44,142 +44,140 @@ export function initmobilekeyboard() {
   let frame = 0
   let focused = false
 
-  const sync = () => {
-    // zero window scroll immediately before and inside rAF to kill the browser bounce --------------------
-    if (window.scrollY > 0 || window.scrollX > 0) window.scrollTo(0, 0)
-    if (document.body.scrollTop > 0) document.body.scrollTop = 0
-    if (root.scrollTop > 0) root.scrollTop = 0
-
-    cancelAnimationFrame(frame)
-    frame = requestAnimationFrame(() => {
-      const vv = window.visualViewport
-      const layoutH = window.innerHeight || root.clientHeight
-      let iskeyboard = false
-
-      if (vv) {
-        if (vv.height < (window.screen?.height ? window.screen.height * 0.75 : layoutH * 0.85)) {
-          iskeyboard = true
-        }
-        const keyboardHeight = Math.max(0, layoutH - vv.height - (vv.offsetTop || 0))
-        root.style.setProperty('--keyboard-inset', `${keyboardHeight}px`)
-      } else {
-        root.style.setProperty('--keyboard-inset', '0px')
-      }
-
-      if (focused && window.innerHeight < window.outerHeight * 0.75) {
-        iskeyboard = true
-      }
-
-      document.body.classList.toggle('keyboard-open', iskeyboard)
-      if (!iskeyboard) {
-        root.style.setProperty('--keyboard-inset', '0px')
-      }
-
-      // keep window from ever scrolling the outer page --------------------
-      if (window.scrollY > 0 || window.scrollX > 0) {
-        window.scrollTo(0, 0)
-      }
+    const sync = () => {
+      // zero window scroll immediately before and inside rAF to kill the browser bounce --------------------
+      if (window.scrollY > 0 || window.scrollX > 0) window.scrollTo(0, 0)
       if (document.body.scrollTop > 0) document.body.scrollTop = 0
       if (root.scrollTop > 0) root.scrollTop = 0
-    })
-  }
 
-  const onfocusin = (e) => {
-    const t = e.target
-    if (!(t instanceof HTMLElement)) return
-    if (t.matches('textarea, input, [contenteditable="true"]')) {
-      focused = true
-      // trick safari out of auto scroll-into-view by temporarily setting transform --------------------
-      const oldtransform = t.style.transform
-      t.style.transform = 'translateY(-9999px)'
-      try {
-        t.focus({ preventScroll: true })
-      } catch {}
-      requestAnimationFrame(() => {
-        t.style.transform = oldtransform || 'none'
-      })
+          cancelAnimationFrame(frame)
+          frame = requestAnimationFrame(() => {
+            const vv = window.visualViewport
+            const layoutH = window.innerHeight || root.clientHeight
+            let iskeyboard = false
 
-      // ensure page starts at true zero so safari does not calculate negative offset --------------------
-      window.scrollTo(0, 0)
-      if (document.body.scrollTop > 0) document.body.scrollTop = 0
-      if (root.scrollTop > 0) root.scrollTop = 0
-      sync()
-      // continuous lock during the 350ms keyboard opening animation --------------------
-      const start = Date.now()
-      const lockframe = () => {
-        if (window.scrollY > 0 || window.scrollX > 0) window.scrollTo(0, 0)
-        if (document.body.scrollTop > 0) document.body.scrollTop = 0
-        if (root.scrollTop > 0) root.scrollTop = 0
-        if (window.visualViewport && window.visualViewport.offsetTop > 0) {
+            if (vv) {
+              if (vv.height < (window.screen?.height ? window.screen.height * 0.75 : layoutH * 0.85)) {
+                iskeyboard = true
+              }
+              // on ios safari, offsetTop can become non-zero during auto-pan
+              // bound inset to layoutH - vv.height so the panel bottom aligns with keyboard top --------------------
+              const keyboardHeight = Math.max(0, layoutH - vv.height)
+              const offsetTop = vv.offsetTop || 0
+              root.style.setProperty('--keyboard-inset', `${keyboardHeight}px`)
+              root.style.setProperty('--keyboard-offset-top', `${offsetTop}px`)
+            } else {
+              root.style.setProperty('--keyboard-inset', '0px')
+              root.style.setProperty('--keyboard-offset-top', '0px')
+            }
+
+            if (focused && window.innerHeight < window.outerHeight * 0.75) {
+              iskeyboard = true
+            }
+
+          document.body.classList.toggle('keyboard-open', iskeyboard)
+          if (!iskeyboard) {
+            root.style.setProperty('--keyboard-inset', '0px')
+            root.style.setProperty('--keyboard-offset-top', '0px')
+          }
+
+          // keep window from ever scrolling the outer page --------------------
+          if (window.scrollY > 0 || window.scrollX > 0) {
+            window.scrollTo(0, 0)
+          }
+          if (document.body.scrollTop > 0) document.body.scrollTop = 0
+          if (root.scrollTop > 0) root.scrollTop = 0
+        })
+      }
+
+      const onfocusin = (e) => {
+        const t = e.target
+        if (!(t instanceof HTMLElement)) return
+        if (t.matches('textarea, input, [contenteditable="true"]')) {
+          focused = true
+
+          // ensure page starts at true zero so safari does not calculate negative offset --------------------
           window.scrollTo(0, 0)
+          if (document.body.scrollTop > 0) document.body.scrollTop = 0
+          if (root.scrollTop > 0) root.scrollTop = 0
+          sync()
+
+          // continuous lock during the 350ms keyboard opening animation --------------------
+          const start = Date.now()
+          const lockframe = () => {
+            if (window.scrollY > 0 || window.scrollX > 0) window.scrollTo(0, 0)
+            if (document.body.scrollTop > 0) document.body.scrollTop = 0
+            if (root.scrollTop > 0) root.scrollTop = 0
+              sync()
+              if (Date.now() - start < 350) {
+                requestAnimationFrame(lockframe)
+              }
+            }
+            requestAnimationFrame(lockframe)
+          }
         }
-        if (Date.now() - start < 350) {
-          requestAnimationFrame(lockframe)
+
+        const onfocusout = () => {
+          focused = false
+          sync()
+          // force synchronous webkit layout reflow and scroll zero on dismiss --------------------
+          window.scrollTo(0, 0)
+          void document.body.offsetHeight
+          if (document.body.scrollTop > 0) document.body.scrollTop = 0
+          if (root.scrollTop > 0) root.scrollTop = 0
+
+          // reset leftover scroll and visualviewport offset ghosting on keyboard dismiss --------------------
+          setTimeout(() => {
+            window.scrollTo(0, 0)
+            void document.body.offsetHeight
+            if (document.body.scrollTop > 0) document.body.scrollTop = 0
+            if (root.scrollTop > 0) root.scrollTop = 0
+            sync()
+          }, 80)
+          setTimeout(() => {
+            window.scrollTo(0, 0)
+            void document.body.offsetHeight
+            sync()
+          }, 280)
+        }
+
+        document.addEventListener('focusin', onfocusin)
+        document.addEventListener('focusout', onfocusout)
+
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', sync)
+          window.visualViewport.addEventListener('scroll', sync)
+        }
+        window.addEventListener('resize', sync)
+
+        sync()
+      }
+
+      export function getmobilepanel() {
+        return document.body?.dataset?.mobilePanel || 'ai'
+      }
+
+      export function setmobilepanel(panel) {
+        if (!ismobilemode()) return
+        const next = panel === 'files' || panel === 'note' || panel === 'ai' ? panel : 'ai'
+        document.body.dataset.mobilePanel = next
+        document.querySelectorAll('.mobile-nav-btn').forEach((btn) => {
+          btn.classList.toggle('is-active', btn.dataset.panel === next)
+        })
+
+        // keep desktop collapse classes in sync so shared code keeps working --------------------
+        const sidebar = document.getElementById('sidebar-pane')
+        const aidrawer = document.getElementById('ai-drawer')
+        if (sidebar) sidebar.classList.toggle('is-collapsed', next !== 'files')
+        if (aidrawer) aidrawer.classList.toggle('is-collapsed', next !== 'ai')
+
+        if (next === 'ai') {
+          const aiinput = document.getElementById('ai-input')
+          import('../chat/assistant.js').then((m) => m.resizeaiinput?.()).catch(() => { })
+          if (aiinput) {
+            try {
+              aiinput.focus()
+            } catch { }
+          }
         }
       }
-      requestAnimationFrame(lockframe)
-    }
-  }
-
-  const onfocusout = () => {
-    focused = false
-    sync()
-    // force synchronous webkit layout reflow and scroll zero on dismiss --------------------
-    window.scrollTo(0, 0)
-    void document.body.offsetHeight
-    if (document.body.scrollTop > 0) document.body.scrollTop = 0
-    if (root.scrollTop > 0) root.scrollTop = 0
-
-    // reset leftover scroll and visualviewport offset ghosting on keyboard dismiss --------------------
-    setTimeout(() => {
-      window.scrollTo(0, 0)
-      void document.body.offsetHeight
-      if (document.body.scrollTop > 0) document.body.scrollTop = 0
-      if (root.scrollTop > 0) root.scrollTop = 0
-      sync()
-    }, 80)
-    setTimeout(() => {
-      window.scrollTo(0, 0)
-      void document.body.offsetHeight
-      sync()
-    }, 280)
-  }
-
-  document.addEventListener('focusin', onfocusin)
-  document.addEventListener('focusout', onfocusout)
-
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', sync)
-    window.visualViewport.addEventListener('scroll', sync)
-  }
-  window.addEventListener('resize', sync)
-
-  sync()
-}
-
-export function getmobilepanel() {
-  return document.body?.dataset?.mobilePanel || 'ai'
-}
-
-export function setmobilepanel(panel) {
-  if (!ismobilemode()) return
-  const next = panel === 'files' || panel === 'note' || panel === 'ai' ? panel : 'ai'
-  document.body.dataset.mobilePanel = next
-  document.querySelectorAll('.mobile-nav-btn').forEach((btn) => {
-    btn.classList.toggle('is-active', btn.dataset.panel === next)
-  })
-
-  // keep desktop collapse classes in sync so shared code keeps working --------------------
-  const sidebar = document.getElementById('sidebar-pane')
-  const aidrawer = document.getElementById('ai-drawer')
-  if (sidebar) sidebar.classList.toggle('is-collapsed', next !== 'files')
-  if (aidrawer) aidrawer.classList.toggle('is-collapsed', next !== 'ai')
-
-  if (next === 'ai') {
-    const aiinput = document.getElementById('ai-input')
-    requestAnimationFrame(() => {
-      import('../chat/assistant.js').then((m) => m.resizeaiinput?.()).catch(() => {})
-      aiinput?.focus?.({ preventScroll: true })
-    })
-  }
-}

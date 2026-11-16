@@ -128,6 +128,10 @@
   background: transparent;
 }
 
+.toolbar-btn.history-restore-btn:not(:disabled) .toolbar-btn-icon {
+  filter: var(--icon-accent-filter, none);
+}
+
 .toolbar-btn.history-restore-btn:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--accent-color) 16%, transparent);
   border: 1px solid var(--accent-color);
@@ -138,6 +142,11 @@
   border: 1px solid color-mix(in srgb, var(--accent-color) 45%, var(--border-color));
   color: color-mix(in srgb, var(--accent-color) 45%, #666);
   opacity: 0.7;
+}
+
+.toolbar-btn.history-restore-btn:disabled .toolbar-btn-icon {
+  opacity: 0.5;
+  filter: grayscale(1);
 }
 
 .toolbar-divider {

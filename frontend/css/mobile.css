@@ -185,19 +185,19 @@ body.is-mobile .sidebar-header {
 }
 
 body.is-mobile.keyboard-open .sidebar {
-  top: 0 !important;
+  top: var(--keyboard-offset-top, 0px) !important;
   bottom: var(--keyboard-inset, 0px) !important;
   height: auto !important;
 }
 
 body.is-mobile.keyboard-open .editor-pane {
-  top: 0 !important;
+  top: var(--keyboard-offset-top, 0px) !important;
   bottom: var(--keyboard-inset, 0px) !important;
   height: auto !important;
 }
 
 body.is-mobile.keyboard-open .ai-drawer {
-  top: 0 !important;
+  top: var(--keyboard-offset-top, 0px) !important;
   bottom: var(--keyboard-inset, 0px) !important;
   height: auto !important;
 }
@@ -333,4 +333,22 @@ body.is-mobile .folder-quick-btn {
 body.is-mobile .folder-quick-icon {
   width: 14px;
   height: 14px;
+}
+
+/* mobile history viewer header -------------------- */
+body.is-mobile .history-viewer-head {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+body.is-mobile .history-viewer-head-left {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+body.is-mobile .history-viewer-head-actions {
+  justify-content: flex-start;
+  width: 100%;
 }

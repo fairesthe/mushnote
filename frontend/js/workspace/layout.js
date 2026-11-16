@@ -96,21 +96,29 @@ function initmobilenav() {
     const handlepanelclick = (e) => {
       const panel = btn.dataset.panel
       if (!panel) return
-      // focus synchronously inside the touch event so webkit opens software keyboard --------------------
+      setmobilepanel(panel)
+      // focus synchronously during the user touch gesture so ios safari displays the keyboard --------------------
       if (panel === 'ai') {
         const aiinput = document.getElementById('ai-input')
         if (aiinput) {
           try {
-            aiinput.focus({ preventScroll: true })
+            aiinput.focus()
           } catch {}
         }
-      }
-      setmobilepanel(panel)
-      if (panel === 'ai') {
         captureeditorselectionforai()
       }
       updatetogglebuttons()
     }
+    btn.addEventListener('touchstart', (e) => {
+      if (btn.dataset.panel === 'ai') {
+        const aiinput = document.getElementById('ai-input')
+        if (aiinput) {
+          try {
+            aiinput.focus()
+          } catch {}
+        }
+      }
+    }, { passive: true })
     btn.addEventListener('touchend', (e) => {
       e.preventDefault()
       handlepanelclick(e)
