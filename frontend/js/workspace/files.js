@@ -886,8 +886,9 @@ function startrowcreate(mode) {
   closecontextmenu()
   clearrowedit(false)
 
-  // creating inside a folder row (or out of deleted) means jump there first --------------------
-  if (state.currentfolder !== targetfolder) {
+  // for files: navigate into the target folder so the input row appears there
+  // for folders: stay in current view, the new folder will appear after submit
+  if (state.currentfolder !== targetfolder && mode !== 'folder') {
     navigatefolder(targetfolder)
   }
 
@@ -940,13 +941,11 @@ async function submitrowedit() {
     if (pending.mode === 'note') {
       let noteid = raw.includes('/') ? raw : (pending.targetfolder ? `${pending.targetfolder}/${raw}` : raw)
       if (!noteid.includes('.')) noteid = `${noteid}.md`
-      const basefilename = noteid.split('/').pop().replace(/\.[^/.]+$/, '')
-      const titleheading = basefilename.charAt(0).toUpperCase() + basefilename.slice(1)
       const res = await api('/api/notes', {
         method: 'POST',
         body: JSON.stringify({
           note_id: noteid,
-          content: `# ${titleheading}\n\n`,
+          content: '',
           author: state.currentuser ? state.currentuser.id : 'unknown',
           create_unique: true,
         }),
@@ -974,7 +973,6 @@ async function submitrowedit() {
       })
       roweditpending = null
       roweditsubmitting = false
-      navigatefolder(targetpath)
       await loadnotes()
       return
     }
@@ -1273,6 +1271,45 @@ export function initfiles() {
     }
     loadnotes()
   })
+
+  // poll for file tree changes when peers are online but we may not have an active socket
+  // catches create or folder events that arrive before or after a socket session
+  let pollinterval = null
+  let lastnotesig = ''
+
+  function getnotesig() {
+    const ids = (state.allnotes || []).map(n => n.note_id).sort().join('|')
+    const folders = (state.allfolders || []).slice().sort().join('|')
+    return `${ids}::${folders}`
+  }
+
+  async function pollfiletree() {
+    try {
+      const data = await api('/api/notes')
+      const incoming = (data.notes || []).map(n => n.note_id).sort().join('|') +
+        '::' + (data.folders || []).slice().sort().join('|')
+      if (incoming !== lastnotesig) {
+        lastnotesig = incoming
+        window.dispatchEvent(new CustomEvent('vault-changed', { detail: { action: 'poll' } }))
+      }
+    } catch {}
+  }
+
+  function startfilepoll() {
+    if (pollinterval) return
+    lastnotesig = getnotesig()
+    pollinterval = setInterval(pollfiletree, 8000)
+  }
+
+  function stopfilepoll() {
+    if (!pollinterval) return
+    clearInterval(pollinterval)
+    pollinterval = null
+  }
+
+  // only poll when peers are connected -- vault-changed from collab handles the rest
+  window.addEventListener('collab-peers-online', startfilepoll)
+  window.addEventListener('collab-peers-offline', stopfilepoll)
 
   // mobile more button -- same menu as empty-area right click --------------------
   const btnfoldermore = document.getElementById('btn-folder-more')

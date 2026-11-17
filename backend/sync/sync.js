@@ -231,10 +231,12 @@ export function getdoc(vaultdir, historydir, noteid) {
     }
     if (kind === 'media' || dead) return
     const content = entry.getcontent()
-    const prev = readnote(vaultdir, currentnoteid)?.content || ''
+    const disknote = readnote(vaultdir, currentnoteid)
+    const exists = Boolean(disknote)
+    const prev = exists ? disknote.content : null
     writeyjsstate(historydir, currentnoteid, doc)
-    if (content === prev) return
-    if (!keepdiskwrite(prev, content)) return
+    if (exists && content === prev) return
+    if (exists && !keepdiskwrite(prev, content)) return
     writenote(vaultdir, currentnoteid, content)
     recordhistory(historydir, currentnoteid, lastauthor, content)
   }

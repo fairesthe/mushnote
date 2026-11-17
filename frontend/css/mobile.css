@@ -59,6 +59,11 @@ body.is-mobile .ai-drawer {
   transition: none !important;
 }
 
+body.is-mobile .ai-drawer > * {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
 body.is-mobile .sidebar.is-collapsed,
 body.is-mobile .ai-drawer.is-collapsed {
   width: 100% !important;

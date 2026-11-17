@@ -14,6 +14,7 @@
   --ai-input-surface: color-mix(in srgb, var(--surface-glass) 58%, transparent);
   --workspace-chrome-height: 40px;
   --sidebar-width: 300px;
+  --ai-drawer-width: 440px;
   --reading-scale: 1;
   --font-ui: "Atkinson Hyperlegible", "Segoe UI", Helvetica, Arial, sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;

@@ -340,6 +340,7 @@ export function stopnotecollab() {
     ed.collabprovider.disconnect()
     ed.collabprovider = null
   }
+  window.dispatchEvent(new CustomEvent('collab-peers-offline'))
   if (ed.collablocktimer) {
     clearTimeout(ed.collablocktimer)
     ed.collablocktimer = null
@@ -378,6 +379,11 @@ export function connectnotesocket(noteid) {
     onepochchange: () => {
       // server started a fresh doc, merging into it would double every line --------------------
       if (ed.collabprovider === provider) connectnotesocket(provider.noteid)
+    },
+    onstatus: (status) => {
+      window.dispatchEvent(new CustomEvent(
+        status === 'online' ? 'collab-peers-online' : 'collab-peers-offline'
+      ))
     },
     oncursor: (data) => {
       if (!data?.author) return

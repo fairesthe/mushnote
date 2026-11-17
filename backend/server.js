@@ -40,6 +40,19 @@ const server = http.createServer(app)
 const port = config.server?.port || 3000
 const host = config.server?.host || 'localhost'
 
+// live websocket server for yjs sync --------------------
+const wss = new WebSocketServer({ noServer: true })
+
+function broadcastvaultchange(payload) {
+  if (!wss || !wss.clients) return
+  const msg = JSON.stringify(payload)
+  for (const client of wss.clients) {
+    if (client.readyState === 1) {
+      client.send(msg)
+    }
+  }
+}
+
 app.use(express.json({ limit: '50mb' }))
 app.use(express.urlencoded({ extended: true, limit: '50mb' }))
 app.use(requestlogger)
@@ -628,20 +641,23 @@ app.post('/api/notes', (req, res) => {
     : content
 
   const entry = getdoc(vaultdir, historydir, targetid)
+  const disknote = readnote(vaultdir, targetid)
+  const exists = Boolean(disknote)
   const currentbody = entry.getcontent()
-  if (currentbody === initialcontent) {
+  if (exists && currentbody === initialcontent) {
     return res.json({ status: 'ok', note_id: targetid })
   }
-  if (currentbody.trim().length > 80 && !String(initialcontent || '').trim()) {
+  if (exists && currentbody.trim().length > 80 && !String(initialcontent || '').trim()) {
     return res.status(409).json({ error: 'refusing empty overwrite' })
   }
-  if (currentbody.trim().length > 400 && String(initialcontent || '').trim().length < 40) {
+  if (exists && currentbody.trim().length > 400 && String(initialcontent || '').trim().length < 40) {
     return res.status(409).json({ error: 'refusing collapsed overwrite' })
   }
 
   entry.setcontent(initialcontent, author)
   entry.flushtodisk(author)
   log.note('save', targetid, `by ${author} (${initialcontent.length} chars)`)
+  broadcastvaultchange({ type: 'vault_changed', action: 'create', note_id: targetid })
   res.status(201).json({ status: 'created', note_id: targetid })
 })
 
@@ -855,6 +871,7 @@ app.post('/api/folder', (req, res) => {
   try {
     const created = createfolder(vaultdir, folder_path)
     log.vault('create', folder_path, `by ${author}`)
+    broadcastvaultchange({ type: 'vault_changed', action: 'create_folder', folder_path })
     res.status(201).json({ status: 'ok', folder: created })
   } catch (err) {
     res.status(400).json({ error: err.message })
@@ -1268,8 +1285,6 @@ app.post('/api/agent/chat', async (req, res) => {
   }
 })
 
-// live websocket server for yjs sync --------------------
-const wss = new WebSocketServer({ noServer: true })
 
 server.on('upgrade', (request, socket, head) => {
   const url = new URL(request.url, `http://${request.headers.host}`)

@@ -21,6 +21,7 @@
   border-color: #444444;
   color: var(--text-color);
 }
+
 /* dialogs and modals -------------------- */
 .dialog-overlay {
   position: fixed;
@@ -147,7 +148,7 @@
 
 /* ai agent drawer -------------------- */
 .ai-drawer {
-  width: 440px;
+  width: var(--ai-drawer-width, 440px);
   min-width: 0;
   max-width: 800px;
   height: 100vh;
@@ -163,9 +164,16 @@
   transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s;
 }
 
+/* keep inner columns at full width so closing crops instead of squeezing text -------------------- */
+.ai-drawer>* {
+  width: var(--ai-drawer-width, 440px);
+  min-width: var(--ai-drawer-width, 440px);
+}
+
 .ai-drawer.is-collapsed {
   width: 0 !important;
   min-width: 0 !important;
+  align-items: flex-end;
   visibility: hidden;
   border-left: none;
   pointer-events: none;
@@ -232,12 +240,14 @@
   visibility: hidden;
   pointer-events: none;
 }
+
 .ai-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
   border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .ai-title-wrap {
@@ -305,6 +315,7 @@
   flex-direction: column;
   flex-grow: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .ai-drawer.conversations-mode .ai-panel-chat {
@@ -423,8 +434,8 @@
   align-items: stretch;
 }
 
-.ai-messages > .ai-msg,
-.ai-messages > .ai-activity-status {
+.ai-messages>.ai-msg,
+.ai-messages>.ai-activity-status {
   flex-shrink: 0;
 }
 

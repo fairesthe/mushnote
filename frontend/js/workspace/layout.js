@@ -223,6 +223,7 @@ export function initlayout() {
       const newwidth = Math.max(220, Math.min(window.innerWidth - e.clientX, 700))
       aidrawer.style.width = `${newwidth}px`
       aidrawer.style.minWidth = `${newwidth}px`
+      document.documentElement.style.setProperty('--ai-drawer-width', `${newwidth}px`)
     }
   })
 
