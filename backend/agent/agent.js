@@ -553,40 +553,92 @@ export async function runagentchat(prompt, options = {}) {
 
   let rawtext = response.text || ''
 
+  // check if thought recovery or plain tool loop recovery is needed --------------------
+  let thoughtmatch = rawtext.match(/<thought>([\s\S]*?)<\/thought>/i)
+  let thought = thoughtmatch ? thoughtmatch[1].replace(/<\/?[a-zA-Z0-9_\-:]+(?:\s+[^>]*)?>/gi, '').trim() : ''
+  let cleantext = rawtext.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
+
   // if tool loop ended without conversational text ask agent to provide summary reply --------------------
   // never nudge with text while calls are still unanswered, that breaks call and response matching
-  if (!rawtext.trim() && toolcallsexecuted.length > 0) {
+  if (!cleantext && toolcallsexecuted.length > 0) {
     if (!response.functionCalls?.length) {
       try {
         const summaryturn = await sendstreamwithretry([{ text: 'all requested actions have completed please provide your final conversational reply to the user summarizing what was done' }])
         rawtext = summaryturn.text || ''
+        const m = rawtext.match(/<thought>([\s\S]*?)<\/thought>/i)
+        if (m) thought = m[1].replace(/<\/?[a-zA-Z0-9_\-:]+(?:\s+[^>]*)?>/gi, '').trim()
+        cleantext = rawtext.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
       } catch (e) {
         log.agent('warn', 'failed to generate summary reply', e.message)
       }
     }
-    if (!rawtext.trim()) {
+    if (!cleantext) {
       const lastcall = toolcallsexecuted[toolcallsexecuted.length - 1]
-      rawtext = `completed ${toolcallsexecuted.length} action(s) including ${lastcall.name}`
+      cleantext = `completed ${toolcallsexecuted.length} action(s) including ${lastcall.name}`
     }
   }
 
-  // plain chat can also come back blank (quiz answers, thought-only turns) --------------------
-  if (!rawtext.trim() && toolcallsexecuted.length === 0 && !response.functionCalls?.length) {
+  // plain chat can also come back blank or thought-only without executing tools --------------------
+  if (!cleantext && toolcallsexecuted.length === 0 && !response.functionCalls?.length) {
     try {
-      const retryturn = await sendstreamwithretry([{
-        text: 'your previous reply was empty. answer the user now with a normal visible chat reply (grade quiz answers if that is what they sent, then continue or score)'
-      }])
-      rawtext = retryturn.text || ''
+      const nudgemsg = thought
+        ? `your previous turn only contained internal thinking: "${thought.slice(0, 150)}". execute any planned tool action now or respond to the user.`
+        : 'your previous reply was empty. answer the user now with a normal visible chat reply (grade quiz answers if that is what they sent, then continue or score)'
+      const retryturn = await sendstreamwithretry([{ text: nudgemsg }])
+      
+      // if retryturn produced tool calls, execute them --------------------
+      if (retryturn.functionCalls && retryturn.functionCalls.length > 0) {
+        response = retryturn
+        while (response.functionCalls && response.functionCalls.length > 0) {
+          if (iterations >= maxtooliterations) break
+          iterations += 1
+          const functionresponses = []
+          for (const call of response.functionCalls) {
+            log.agent('tool', call.name, formattoolargs(call))
+            if (onProgress) {
+              onProgress('status', { status: formattoolstatus(call), tool: call.name })
+            }
+            const tooloutput = await executetool(call.name, call.args, {
+              vaultdir,
+              historydir,
+              activeuser,
+              activeuserid: active_user_id,
+              isadmin: is_admin,
+              ainame,
+              aiusername: aiconf.username || aiconf.id || 'ai',
+              config: conf,
+            })
+            toolcallsexecuted.push({
+              name: call.name,
+              args: call.args,
+              output: tooloutput?.__inlinedata ? tooloutput.text : tooloutput
+            })
+            if (onProgress) {
+              onProgress('tool_call', {
+                name: call.name,
+                args: call.args,
+                output: tooloutput?.__inlinedata ? tooloutput.text : tooloutput
+              })
+            }
+            functionresponses.push(buildfunctionresponse(call, tooloutput))
+          }
+          response = await sendstreamwithretry(functionresponses)
+        }
+        rawtext = response.text || ''
+      } else {
+        rawtext = retryturn.text || ''
+      }
+
+      const m = rawtext.match(/<thought>([\s\S]*?)<\/thought>/i)
+      if (m) thought = m[1].replace(/<\/?[a-zA-Z0-9_\-:]+(?:\s+[^>]*)?>/gi, '').trim()
+      cleantext = rawtext.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
     } catch (e) {
       log.agent('warn', 'failed to recover empty reply', e.message)
     }
-    if (!rawtext.trim()) {
-      rawtext = 'i blanked for a second, send that again'
+    if (!cleantext) {
+      cleantext = 'i blanked for a second, send that again'
     }
   }
-  const thoughtmatch = rawtext.match(/<thought>([\s\S]*?)<\/thought>/i)
-  const thought = thoughtmatch ? thoughtmatch[1].replace(/<\/?[a-zA-Z0-9_\-:]+(?:\s+[^>]*)?>/gi, '').trim() : ''
-  let cleantext = rawtext.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim()
 
   // extract interactive response options if provided --------------------
   let optionslist = []

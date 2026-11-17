@@ -605,8 +605,8 @@ export function copynoteorfolder(vaultdir, historydir, source, destination, auth
 
 // single accent color for theme and collaboration highlights --------------------
 export function resolveaccent(prefs = {}) {
-  if (!prefs || typeof prefs !== 'object') return '#ffffff'
-  return prefs.accent || prefs['accent-color'] || prefs['user-color'] || '#ffffff'
+  if (!prefs || typeof prefs !== 'object') return '#5f805e'
+  return prefs.accent || prefs['accent-color'] || prefs['user-color'] || '#5f805e'
 }
 
 // pick a vivid random hex accent for new accounts --------------------
@@ -689,10 +689,10 @@ export function initsystemnotes(vaultdir, users = []) {
     // create preferences yaml --------------------
     const prefspath = path.join(userfolder, 'preferences.yaml')
     if (!fs.existsSync(prefspath)) {
-      const displayname = user.name || (userid.charAt(0).toUpperCase() + userid.slice(1))
+      const displayname = user.name || userid
       const prefs = {
         name: displayname,
-        accent: randomaccentcolor(),
+        accent: '#5f805e',
         'bg-color': '#000000',
         'text-color': '#ededed',
         'reading-scale': 100

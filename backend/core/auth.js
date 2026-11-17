@@ -141,7 +141,7 @@ export function getsession(token) {
     const userid = user.username || user.id
     const vaultdir = getvaultpath(conf)
     const prefs = readuserpreferences(vaultdir, userid) || {}
-    const displayname = prefs.name || (userid.charAt(0).toUpperCase() + userid.slice(1))
+    const displayname = prefs.name || userid
     const isadmin = Boolean(user.admin)
     const isbot = Boolean(user.bot || user.role === 'ai')
 

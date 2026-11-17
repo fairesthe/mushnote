@@ -111,7 +111,11 @@ without bright data keys, everything else still works — web tools return “no
 
 ```bash
 npm --prefix backend install
+npm --prefix backend rebuild
 ```
+
+> [!NOTE]
+> On newer versions of npm (v12+ / Node 26), lifecycle scripts may be blocked by default. Running `npm --prefix backend rebuild` (or `npm install --ignore-scripts=false`) ensures native binaries like `ffmpeg` and `yt-dlp` download properly.
 
 config lives at `vault/system/config.yaml` (copied from `resources/config.example.yaml` on first boot if missing).
 
@@ -130,11 +134,18 @@ gemini:
 
 ### 2. bright data (optional web)
 
-1. sign up at [bright data](https://brightdata.com/).
-2. create two zones in the control panel:
-   - **serp zone** — data format **google full json** (name it e.g. `mushnote_serp`)
-   - **webview zone** — web unlocker or scrape for page fetch (e.g. `mushnote_webview`)
-3. same api key is used for both; paste into config:
+sign up at [bright data](https://brightdata.com/) to grant the agent live google search and web page reading abilities.
+
+in your bright data control panel, create two zones:
+1. **serp zone** (for `web_search`)
+   - type: **serp api**
+   - format: **google full json**
+   - name: e.g. `mushnote_serp`
+2. **webview zone** (for `web_read_page`)
+   - type: **scraping browser** or **web unlocker**
+   - name: e.g. `mushnote_webview`
+
+copy your api key from settings, and add both to `vault/system/config.yaml`:
 
 ```yaml
 brightdata:
@@ -144,9 +155,7 @@ brightdata:
   country: us
 ```
 
-4. restart the server. try a chat web search to confirm.
-
-without bright data the agent still edits notes and answers from the vault.
+restart the server to activate web tools. without bright data, the agent continues operating normally on vault notes.
 
 ### 3. youtube (optional, no extra api)
 
@@ -167,6 +176,57 @@ npm --prefix backend run dev
 ```
 
 open [http://localhost:3000](http://localhost:3000) on your lan so others can join (set `server.host` if you need to bind beyond localhost).
+
+### 5. running as a linux service (systemd)
+
+to run mushnote as a background daemon on linux that launches on boot:
+
+1. create `/etc/systemd/system/mushnote.service`:
+
+```ini
+[Unit]
+Description=Mushnote Service
+After=network.target
+
+[Service]
+Type=simple
+User=youruser
+Group=youruser
+WorkingDirectory=/home/youruser/mushnote/backend
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+# security hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/home/youruser/mushnote
+
+[Install]
+WantedBy=multi-user.target
+```
+
+2. enable and start the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now mushnote
+```
+
+3. check logs:
+
+```bash
+journalctl -u mushnote -f
+```
+
+if using a reverse proxy like **caddy**, set `host: 127.0.0.1` in `vault/system/config.yaml` and proxy in your `Caddyfile`:
+
+```caddyfile
+notes.yourdomain.com {
+    reverse_proxy 127.0.0.1:3000
+}
+```
 
 ## jobs setup
 

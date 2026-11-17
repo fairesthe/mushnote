@@ -26,8 +26,8 @@ export function parsereadingscale(val) {
 }
 
 export function resolveaccent(prefs = {}) {
-  if (!prefs || typeof prefs !== 'object') return '#ffffff'
-  return prefs.accent || prefs['accent-color'] || prefs['user-color'] || '#ffffff'
+  if (!prefs || typeof prefs !== 'object') return '#5f805e'
+  return prefs.accent || prefs['accent-color'] || prefs['user-color'] || '#5f805e'
 }
 
 // icon art uses white + pure red (#ff0000)

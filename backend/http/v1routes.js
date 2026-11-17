@@ -45,7 +45,7 @@ function canregister(req, conf) {
 function builduserpayload(user, vaultdir, readuserpreferences) {
   const userid = user.username || user.id
   const prefs = readuserpreferences(vaultdir, userid) || {}
-  const displayname = prefs.name || (userid.charAt(0).toUpperCase() + userid.slice(1))
+  const displayname = prefs.name || userid
   return {
     id: userid,
     username: userid,
@@ -117,7 +117,7 @@ export function registerv1routes(app, ctx) {
       username,
       admin: false,
       bot: false,
-      avatar: '/avatars/default_admin.png',
+      avatar: '/avatars/default_user.png',
     }
     if (!conf.users) conf.users = []
     conf.users.push(newuser)

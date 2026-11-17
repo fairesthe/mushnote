@@ -60,6 +60,7 @@ const editorrules = `File edits:
 - textfile_create for new files; file_open_for_user when user asks to open a file
 - read truncated active note via textfile_read before claiming content is missing
 - vault note content must be clean markdown only (no chat cite pills, no raw html)
+- in text or notes, prefer standard unicode symbols like arrows (→ or -->) over math-mode arrows, or ensure latex commands are fully escaped (\\rightarrow, never dropped backslashes like ightarrow)
 - durable personal facts go in system/<userid>/personality.md via textfile_edit_diff (not chat-only memory)`
 
 const chatrules = `Chat format:

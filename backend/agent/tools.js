@@ -654,7 +654,7 @@ export async function executetool(name, args, context) {
 
     const cfg = config || {}
     if (!getbrightdataconfig(cfg).serpenabled) {
-      return 'error: web search is not configured, add brightdata.api_key and brightdata.serp_zone to config.yaml'
+      return 'error: web search is not configured. tell the user clearly that web search is currently disabled because brightdata (api_key and serp_zone) is not configured in config.yaml, then proceed using your own internal knowledge or vault files'
     }
 
     try {
@@ -766,7 +766,7 @@ export async function executetool(name, args, context) {
 
     const cfg = config || {}
     if (!getbrightdataconfig(cfg).webreadenabled) {
-      return 'error: web read is not configured, set brightdata.webview_zone (e.g. mushnote_webview) in config.yaml'
+      return 'error: web page reading is not configured. tell the user clearly that reading live web pages is currently disabled because brightdata.webview_zone is not configured in config.yaml'
     }
 
     try {

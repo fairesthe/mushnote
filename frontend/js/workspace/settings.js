@@ -476,6 +476,8 @@ export function initsidebarsettings() {
         forminlineadduser.classList.add('hidden')
 
         selecteduserid = uname
+        updateradioselection()
+        setusersselectmode(false)
         await refreshuserlist()
         await loadusersettings(selecteduserid)
       } catch (err) {

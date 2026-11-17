@@ -157,7 +157,7 @@ app.get('/api/auth/users', (req, res) => {
     const isbot = Boolean(u.bot || u.role === 'ai')
     const isadmin = Boolean(u.admin)
     const prefs = readuserpreferences(vaultdir, userid) || {}
-    const displayname = prefs.name || (userid.charAt(0).toUpperCase() + userid.slice(1))
+    const displayname = prefs.name || userid
     return {
       id: userid,
       username: userid,
@@ -199,7 +199,7 @@ app.post('/api/auth/setup-password', (req, res) => {
     const updated = setuserauth(user_id, password)
     const userid = updated.username || updated.id
     const prefs = readuserpreferences(vaultdir, userid) || {}
-    const displayname = prefs.name || (userid.charAt(0).toUpperCase() + userid.slice(1))
+    const displayname = prefs.name || userid
     const userpayload = {
       id: userid,
       username: userid,
@@ -248,7 +248,7 @@ app.post('/api/auth/login', (req, res) => {
 
   const userid = user.username || user.id
   const prefs = readuserpreferences(vaultdir, userid) || {}
-  const displayname = prefs.name || (userid.charAt(0).toUpperCase() + userid.slice(1))
+  const displayname = prefs.name || userid
   const userpayload = {
     id: userid,
     username: userid,
@@ -307,7 +307,7 @@ app.post('/api/admin/users', (req, res) => {
     username: cleanusername,
     admin: Boolean(admin),
     bot: isbot,
-    avatar: formatavatarurl(avatar) || (isbot ? '/avatars/default_ai.png' : '/avatars/default_admin.png')
+    avatar: formatavatarurl(avatar) || (isbot ? '/avatars/default_ai.png' : '/avatars/default_user.png')
   }
 
   if (!conf.users) {

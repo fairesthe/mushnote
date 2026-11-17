@@ -34,7 +34,7 @@ users:
   - username: admin
     admin: true
     bot: false
-    avatar: /avatars/default_admin.png
+    avatar: /avatars/default_user.png
   - username: ai
     admin: false
     bot: true
