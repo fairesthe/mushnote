@@ -313,7 +313,7 @@ export function uploadfiletofolder(targetfolder = null) {
 
     try {
       await loadnotes()
-    } catch {}
+    } catch { }
   })
 
   document.body.appendChild(input)
@@ -985,7 +985,9 @@ async function submitrowedit() {
       }
       let cleanednewname = raw
       if (!pending.isfolder && !/\.[a-zA-Z0-9]+$/.test(cleanednewname)) {
-        cleanednewname = `${cleanednewname}.md`
+        // preserve original file extension if user omitted it --------------------
+        const oldext = currentname.includes('.') ? currentname.split('.').pop() : ''
+        cleanednewname = oldext ? `${cleanednewname}.${oldext}` : `${cleanednewname}.md`
       }
       const parentpath = pending.oldpath.includes('/')
         ? pending.oldpath.split('/').slice(0, -1).join('/')
@@ -1292,7 +1294,7 @@ export function initfiles() {
         lastnotesig = incoming
         window.dispatchEvent(new CustomEvent('vault-changed', { detail: { action: 'poll' } }))
       }
-    } catch {}
+    } catch { }
   }
 
   function startfilepoll() {
@@ -1702,10 +1704,10 @@ export async function loadnotes() {
       }
     }
 
-      // always render folder view so directory tree is always populated --------------------
-      renderfolderview()
-    } catch (err) {
-      console.error('failed to load notes', err)
-    }
+    // always render folder view so directory tree is always populated --------------------
+    renderfolderview()
+  } catch (err) {
+    console.error('failed to load notes', err)
   }
+}
 

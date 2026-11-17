@@ -155,7 +155,7 @@ export function listnotes(vaultdir) {
             const content = fs.readFileSync(fullpath, 'utf8')
             title = extracttitle(content, relid)
             snippet = content.slice(0, 100).replace(/\n/g, ' ')
-          } catch {}
+          } catch { }
         }
 
         notes.push({
@@ -268,7 +268,7 @@ export function deletenote(vaultdir, noteid, historydir = null, author = 'unknow
           old_path: noteid,
           details: `deleted file (${content.length} chars)`
         })
-      } catch {}
+      } catch { }
     }
     markinternaldelete(filepath)
     fs.unlinkSync(filepath)
@@ -354,7 +354,9 @@ export function movenoteorfolder(vaultdir, historydir, source, destination, auth
     const filename = path.basename(srcpath)
     resolveddest = `${cleandest}/${filename}`
   } else if (!/\.[a-zA-Z0-9]+$/i.test(resolveddest)) {
-    resolveddest = `${resolveddest}.md`
+    // preserve original file extension if omitted --------------------
+    const srcext = path.extname(srcpath)
+    resolveddest = srcext ? `${resolveddest}${srcext}` : `${resolveddest}.md`
   }
 
   // resolve conflict if destination already exists --------------------
@@ -428,7 +430,7 @@ export function deletefolder(vaultdir, historydir, folderpath, author = 'unknown
         old_path: cleanpath,
         details: `deleted folder "${cleanpath}"`
       })
-    } catch {}
+    } catch { }
   }
 
   markinternaldelete(fullpath)
@@ -567,7 +569,9 @@ export function copynoteorfolder(vaultdir, historydir, source, destination, auth
     const filename = path.basename(srcpath)
     resolveddest = `${cleandest}/${filename}`
   } else if (!/\.[a-zA-Z0-9]+$/i.test(resolveddest)) {
-    resolveddest = `${resolveddest}.md`
+    // preserve original file extension if omitted --------------------
+    const srcext = path.extname(srcpath)
+    resolveddest = srcext ? `${resolveddest}${srcext}` : `${resolveddest}.md`
   }
 
   // if copying in same location or target exists ensure unique copy name --------------------
