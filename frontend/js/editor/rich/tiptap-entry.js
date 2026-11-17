@@ -477,11 +477,11 @@ const TaskListMarkdownInput = Extension.create({
   name: 'taskListMarkdownInput',
   priority: 200,
   addInputRules() {
-  return [
+    return [
       new InputRule({
-        find: /^\s*([-+*])\s+\[([ |xX])\]\s$/,
+        find: /^\s*([-+*])\s+\[([ |xX]?)\]\s$/,
         handler: ({ chain, range, match }) => {
-          const checked = match[2].toLowerCase() === 'x'
+          const checked = (match[2] || '').toLowerCase() === 'x'
           return chain()
             .deleteRange(range)
             .toggleTaskList()
@@ -490,28 +490,24 @@ const TaskListMarkdownInput = Extension.create({
         }
       }),
       new InputRule({
-        find: /^\[([ |xX])\]\s$/,
-        handler: ({ editor, chain, range, match }) => {
-          if (!editor.isActive('listItem') || editor.isActive('taskItem')) return null
-          const checked = match[1].toLowerCase() === 'x'
+        find: /^\s*\[([ |xX]?)\]\s$/,
+        handler: ({ chain, range, match, state }) => {
+          const { $from } = state.selection
+          let inListItem = false
+          for (let depth = $from.depth; depth > 0; depth--) {
+            const name = $from.node(depth).type.name
+            if (name === 'taskItem') return null
+            if (name === 'listItem') {
+              inListItem = true
+              break
+            }
+          }
+          if (!inListItem) return null
+          const checked = (match[1] || '').toLowerCase() === 'x'
           return chain()
             .deleteRange(range)
-            .command(({ tr, state }) => {
-              const { $from } = state.selection
-              let listItemDepth = -1
-              let bulletDepth = -1
-              for (let depth = $from.depth; depth > 0; depth--) {
-                const name = $from.node(depth).type.name
-                if (name === 'listItem' && listItemDepth < 0) listItemDepth = depth
-                if (name === 'bulletList' && bulletDepth < 0) bulletDepth = depth
-              }
-              if (listItemDepth < 0 || bulletDepth < 0) return false
-              const bulletPos = $from.before(bulletDepth)
-              const listItemPos = $from.before(listItemDepth)
-              tr.setNodeMarkup(bulletPos, state.schema.nodes.taskList)
-              tr.setNodeMarkup(listItemPos, state.schema.nodes.taskItem, { checked })
-              return true
-            })
+            .toggleTaskList()
+            .command(({ tr, state: newState }) => settaskitemchecked(tr, newState, checked))
             .run()
         }
       })
