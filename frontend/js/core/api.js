@@ -30,9 +30,44 @@ export function resolveaccent(prefs = {}) {
   return prefs.accent || prefs['accent-color'] || prefs['user-color'] || '#5f805e'
 }
 
-// icon art uses white + pure red (#ff0000)
+// icon art uses white and pure red (#ff0000)
 // hue-rotate leaves white alone and shifts only the red toward accent --------------------
 const iconbaseredhue = 0
+
+// compensate hue and brightness so orange and yellow do not turn brown or red --------------------
+const iconhueshifts = [
+  { h: 0, rot: 0, b: 1.0 },
+  { h: 8, rot: 10, b: 1.1 },
+  { h: 16, rot: 32, b: 1.6 },
+  { h: 25, rot: 50, b: 2.3 },
+  { h: 35, rot: 56, b: 2.5 },
+  { h: 45, rot: 61, b: 2.7 },
+  { h: 55, rot: 66, b: 3.1 },
+  { h: 62, rot: 69, b: 3.2 },
+  { h: 72, rot: 75, b: 2.5 },
+  { h: 85, rot: 85, b: 1.5 },
+  { h: 98, rot: 98, b: 1.0 },
+  { h: 250, rot: 250, b: 1.0 },
+  { h: 272, rot: 290, b: 1.05 },
+  { h: 290, rot: 302, b: 1.05 },
+  { h: 305, rot: 305, b: 1.0 },
+  { h: 360, rot: 360, b: 1.0 }
+]
+
+function mapiconhue(h) {
+  for (let i = 0; i < iconhueshifts.length - 1; i++) {
+    const p1 = iconhueshifts[i]
+    const p2 = iconhueshifts[i + 1]
+    if (h >= p1.h && h <= p2.h) {
+      const t = (h - p1.h) / (p2.h - p1.h)
+      return {
+        rot: p1.rot + (p2.rot - p1.rot) * t,
+        bright: p1.b + (p2.b - p1.b) * t
+      }
+    }
+  }
+  return { rot: h, bright: 1.0 }
+}
 
 function parsehexrgb(hex) {
   if (!hex || typeof hex !== 'string') return null
@@ -70,9 +105,11 @@ export function accenticonfilter(accent) {
   const { h, s, l } = rgbtohsl(rgb.r, rgb.g, rgb.b)
   // near white or gray accents keep the drawn red as-is --------------------
   if (s < 0.08 || l > 0.92) return 'none'
-  const delta = Math.round(h - iconbaseredhue)
+  const { rot, bright } = mapiconhue(h)
+  const delta = Math.round(rot - iconbaseredhue)
   const sat = Math.max(0.55, Math.min(1.75, s / 0.85))
-  return `hue-rotate(${delta}deg) saturate(${sat.toFixed(2)})`
+  const brightstr = bright !== 1.0 ? ` brightness(${bright.toFixed(2)})` : ''
+  return `hue-rotate(${delta}deg) saturate(${sat.toFixed(2)})${brightstr}`
 }
 
 // apply user theme preferences --------------------
