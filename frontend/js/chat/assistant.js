@@ -125,7 +125,7 @@ async function uploadchattovault(dataurl, filename, { label } = {}) {
       onprogress: (pct) => setprogress(12 + Math.round(pct * 0.88))
     })
   })
-  try { loadnotes() } catch {}
+  try { loadnotes() } catch { }
   return res.path || uploadpath
 }
 
@@ -223,7 +223,7 @@ async function convertvideotoaudio(file) {
       size: wavblob.size
     }
   } finally {
-    try { ctx.close() } catch {}
+    try { ctx.close() } catch { }
   }
 }
 
@@ -370,7 +370,7 @@ export function addreferenceattachment(ref) {
 function scheduledraftsave() {
   import('./conversations.js')
     .then((m) => m.schedulesaveactiveconversation())
-    .catch(() => {})
+    .catch(() => { })
 }
 
 function clonedraftattachments(list) {
@@ -583,9 +583,9 @@ export function resizeaiinput() {
       return
     }
     aiinput.style.height = '0px'
-    const next = Math.min(Math.max(aiinput.scrollHeight, 20), 60)
+    const next = Math.min(Math.max(aiinput.scrollHeight, 20), 40)
     aiinput.style.height = `${next}px`
-    aiinput.style.overflowY = next >= 60 ? 'auto' : 'hidden'
+    aiinput.style.overflowY = next >= 40 ? 'auto' : 'hidden'
     return
   }
 
@@ -1142,8 +1142,8 @@ function applychatmarkdownto(el, text) {
   if (!el) return
   el.innerHTML = renderchatmarkdown(text)
   attachblockcopyactions(el)
-  enhancemermaid(el).catch(() => {})
-  enhancechatcites(el).catch(() => {})
+  enhancemermaid(el).catch(() => { })
+  enhancechatcites(el).catch(() => { })
 }
 
 function isactivityworking(label, done = false) {
@@ -1270,7 +1270,7 @@ export async function senduserprompt(text) {
   if (isfirstuserturn) {
     import('./conversations.js')
       .then((m) => m.maybegeneratetitleforactive())
-      .catch(() => {})
+      .catch(() => { })
   }
 
   // render user message with attachments and copy button --------------------
@@ -1397,343 +1397,343 @@ export async function senduserprompt(text) {
       }
 
       try {
-    const response = await fetch('/api/agent/chat', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers,
-      body: chatbody
-    })
+        const response = await fetch('/api/agent/chat', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers,
+          body: chatbody
+        })
 
-    if (!response.ok && !response.headers.get('content-type')?.includes('text/event-stream')) {
-      const errdata = await response.json().catch(() => ({}))
-      throw new Error(errdata.error || 'request failed')
-    }
+        if (!response.ok && !response.headers.get('content-type')?.includes('text/event-stream')) {
+          const errdata = await response.json().catch(() => ({}))
+          throw new Error(errdata.error || 'request failed')
+        }
 
-    let agentmsg = null
-    let agentbubble = null
-    const toolscollected = []
-    let donedata = null
-    let liveontoolstatus = false
+        let agentmsg = null
+        let agentbubble = null
+        const toolscollected = []
+        let donedata = null
+        let liveontoolstatus = false
 
-    // clean all tags and unclosed tags in progress --------------------
-    function sanitizestreamtext(str) {
-      if (!str) return ''
-      return str.replace(/<\/?[a-zA-Z0-9_\-:]+(?:\s+[^>]*)?>/gi, '').replace(/<[a-zA-Z0-9_\-:]*$/i, '')
-    }
+        // clean all tags and unclosed tags in progress --------------------
+        function sanitizestreamtext(str) {
+          if (!str) return ''
+          return str.replace(/<\/?[a-zA-Z0-9_\-:]+(?:\s+[^>]*)?>/gi, '').replace(/<[a-zA-Z0-9_\-:]*$/i, '')
+        }
 
-    let rawreplytext = ''
-    let pendingreplytext = ''
-    let replydebouncetimer = null
+        let rawreplytext = ''
+        let pendingreplytext = ''
+        let replydebouncetimer = null
 
-    function renderbufferedreply(fulltext) {
-      pendingreplytext = sanitizestreamtext(fulltext)
-      if (!replydebouncetimer) {
-        replydebouncetimer = setTimeout(() => {
-          replydebouncetimer = null
-          if (agentbubble && pendingreplytext) {
+        function renderbufferedreply(fulltext) {
+          pendingreplytext = sanitizestreamtext(fulltext)
+          if (!replydebouncetimer) {
+            replydebouncetimer = setTimeout(() => {
+              replydebouncetimer = null
+              if (agentbubble && pendingreplytext) {
+                agentbubble.classList.add('rendered-md')
+                applychatmarkdownto(agentbubble, pendingreplytext)
+                aimessages.scrollTop = aimessages.scrollHeight
+              }
+            }, 75)
+          }
+        }
+
+        function flushbufferedreply(fulltext) {
+          if (replydebouncetimer) {
+            clearTimeout(replydebouncetimer)
+            replydebouncetimer = null
+          }
+          const cleantext = sanitizestreamtext(fulltext || pendingreplytext)
+          if (agentbubble && cleantext) {
             agentbubble.classList.add('rendered-md')
-            applychatmarkdownto(agentbubble, pendingreplytext)
+            applychatmarkdownto(agentbubble, cleantext)
             aimessages.scrollTop = aimessages.scrollHeight
           }
-        }, 75)
-      }
-    }
-
-    function flushbufferedreply(fulltext) {
-      if (replydebouncetimer) {
-        clearTimeout(replydebouncetimer)
-        replydebouncetimer = null
-      }
-      const cleantext = sanitizestreamtext(fulltext || pendingreplytext)
-      if (agentbubble && cleantext) {
-        agentbubble.classList.add('rendered-md')
-        applychatmarkdownto(agentbubble, cleantext)
-        aimessages.scrollTop = aimessages.scrollHeight
-      }
-    }
-
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-
-      const parts = buffer.split('\n\n')
-      buffer = parts.pop()
-
-      for (const part of parts) {
-        if (!part.trim()) continue
-        let eventname = 'message'
-        let rawdata = ''
-
-        for (const line of part.split('\n')) {
-          if (line.startsWith('event: ')) {
-            eventname = line.slice(7).trim()
-          } else if (line.startsWith('data: ')) {
-            rawdata += line.slice(6)
-          }
         }
 
-        if (!rawdata) continue
-        let parsed
-        try {
-          parsed = JSON.parse(rawdata)
-        } catch {
-          continue
-        }
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
 
-        let paintedtoolstatus = false
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
 
-        if (eventname === 'status') {
-          let statustext = parsed.status || parsed.text || 'thinking...'
-          let toolname = parsed.tool || ''
-          if (statustext.startsWith('running ') || statustext.startsWith('using ')) {
-            toolname = toolname || statustext.replace(/^(running|using)\s+/, '').replace(/\.\.\.$/, '')
-            statustext = formatnonadmintooltext({ name: toolname, args: {} })
-          }
-          const isthinking = statustext === 'thinking...' || /^thinking\b/i.test(statustext)
-          // keep finished and in-progress tool lines while the model thinks between rounds --------------------
-          if (isthinking && (liveontoolstatus || livetoolname) && !toolname) continue
-          liveontoolstatus = Boolean(toolname) || !isthinking
-          updatestatus(statustext, toolname)
-          paintedtoolstatus = Boolean(toolname) || liveontoolstatus
-        } else if (eventname === 'thought') {
-          if (!liveontoolstatus && !livetoolname) {
-            updatestatus('thinking...')
-          }
-        } else if (eventname === 'token') {
-          removestatus()
-          liveontoolstatus = false
-          if (!agentmsg) {
-            agentmsg = document.createElement('div')
-            agentmsg.className = 'ai-msg agent'
-            agentbubble = document.createElement('div')
-            agentbubble.className = 'msg-bubble rendered-md'
-            agentmsg.appendChild(agentbubble)
-            aimessages.appendChild(agentmsg)
-          }
-          rawreplytext = parsed.full || (rawreplytext + (parsed.delta || ''))
-          renderbufferedreply(rawreplytext)
-        } else if (eventname === 'tool_call') {
-          toolscollected.push(parsed)
-          if (agentmsg) {
-            agentmsg.remove()
-            agentmsg = null
-            agentbubble = null
-          }
-          rawreplytext = ''
-          pendingreplytext = ''
-          // leave this tool in chat as a past-tense line --------------------
-          if (parsed?.name) {
-            committoolactivity(parsed)
-            liveontoolstatus = true
-            paintedtoolstatus = true
-          }
-        } else if (eventname === 'done') {
-          donedata = parsed
-        } else if (eventname === 'error') {
-          throw new Error(parsed.error || 'request failed')
-        }
+          const parts = buffer.split('\n\n')
+          buffer = parts.pop()
 
-        // let the browser paint tool badges when several sse events arrive in one chunk --------------------
-        if (paintedtoolstatus) {
-          await new Promise((resolve) => requestAnimationFrame(resolve))
-        }
-      }
-    }
+          for (const part of parts) {
+            if (!part.trim()) continue
+            let eventname = 'message'
+            let rawdata = ''
 
-    const data = donedata || {}
-    if (data.system_prompt) {
-      lastsystemprompt = data.system_prompt
-    }
-    if (data.system_prompt_meta) {
-      lastsystempromptmeta = data.system_prompt_meta
-    }
-    if (data.model) {
-      lastagentmodel = data.model
-    }
-
-    removestatus()
-
-    const finaltools = (data.tool_calls && data.tool_calls.length > 0) ? data.tool_calls : toolscollected
-
-    if (finaltools.length > 0) {
-      // refresh notes tree in sidebar only so active editor view and animations are not interrupted --------------------
-      await loadnotes()
-
-      if (state.activenoteid?.startsWith('preview:')) {
-        const previewtarget = getpreviewtargetid(state.activenoteid)
-        if (previewtarget) {
-          const sourcetouched = finaltools.some((call) => {
-            const toolpath = call.args?.path || call.args?.file_path || call.args?.note_id
-            if (!toolpath) return false
-            if (call.name !== 'textfile_edit_diff' && call.name !== 'textfile_create') return false
-            return isnoteidmatch(toolpath, previewtarget)
-          })
-          if (sourcetouched) {
-            await renderpreview(previewtarget)
-          }
-        }
-      }
-
-      // if ai generated a new file or opened a file for user open it in a new tab --------------------
-      for (const call of finaltools) {
-        const isnewfile = call.name === 'textfile_create'
-        const isuseropen = call.name === 'file_open_for_user'
-          || (call.name === 'textfile_read' && call.args?.open_in_tab)
-        let targetfileid = call.args?.path || call.args?.file_path || call.args?.note_id
-        if (call.name === 'youtube_video' && String(call.args?.action || '').toLowerCase() === 'download') {
-          try {
-            const parsed = typeof call.output === 'string' ? JSON.parse(call.output) : call.output
-            if (parsed?.path && parsed?.open_in_tab !== false) {
-              targetfileid = parsed.path
+            for (const line of part.split('\n')) {
+              if (line.startsWith('event: ')) {
+                eventname = line.slice(7).trim()
+              } else if (line.startsWith('data: ')) {
+                rawdata += line.slice(6)
+              }
             }
-          } catch {}
+
+            if (!rawdata) continue
+            let parsed
+            try {
+              parsed = JSON.parse(rawdata)
+            } catch {
+              continue
+            }
+
+            let paintedtoolstatus = false
+
+            if (eventname === 'status') {
+              let statustext = parsed.status || parsed.text || 'thinking...'
+              let toolname = parsed.tool || ''
+              if (statustext.startsWith('running ') || statustext.startsWith('using ')) {
+                toolname = toolname || statustext.replace(/^(running|using)\s+/, '').replace(/\.\.\.$/, '')
+                statustext = formatnonadmintooltext({ name: toolname, args: {} })
+              }
+              const isthinking = statustext === 'thinking...' || /^thinking\b/i.test(statustext)
+              // keep finished and in-progress tool lines while the model thinks between rounds --------------------
+              if (isthinking && (liveontoolstatus || livetoolname) && !toolname) continue
+              liveontoolstatus = Boolean(toolname) || !isthinking
+              updatestatus(statustext, toolname)
+              paintedtoolstatus = Boolean(toolname) || liveontoolstatus
+            } else if (eventname === 'thought') {
+              if (!liveontoolstatus && !livetoolname) {
+                updatestatus('thinking...')
+              }
+            } else if (eventname === 'token') {
+              removestatus()
+              liveontoolstatus = false
+              if (!agentmsg) {
+                agentmsg = document.createElement('div')
+                agentmsg.className = 'ai-msg agent'
+                agentbubble = document.createElement('div')
+                agentbubble.className = 'msg-bubble rendered-md'
+                agentmsg.appendChild(agentbubble)
+                aimessages.appendChild(agentmsg)
+              }
+              rawreplytext = parsed.full || (rawreplytext + (parsed.delta || ''))
+              renderbufferedreply(rawreplytext)
+            } else if (eventname === 'tool_call') {
+              toolscollected.push(parsed)
+              if (agentmsg) {
+                agentmsg.remove()
+                agentmsg = null
+                agentbubble = null
+              }
+              rawreplytext = ''
+              pendingreplytext = ''
+              // leave this tool in chat as a past-tense line --------------------
+              if (parsed?.name) {
+                committoolactivity(parsed)
+                liveontoolstatus = true
+                paintedtoolstatus = true
+              }
+            } else if (eventname === 'done') {
+              donedata = parsed
+            } else if (eventname === 'error') {
+              throw new Error(parsed.error || 'request failed')
+            }
+
+            // let the browser paint tool badges when several sse events arrive in one chunk --------------------
+            if (paintedtoolstatus) {
+              await new Promise((resolve) => requestAnimationFrame(resolve))
+            }
+          }
         }
-        if (!targetfileid && call.name === 'textfile_create') {
-          // fallback to parse file id from output --------------------
-          const match = String(call.output || '').match(/\[(.*?)\]/)
-          if (match) targetfileid = match[1]
+
+        const data = donedata || {}
+        if (data.system_prompt) {
+          lastsystemprompt = data.system_prompt
         }
-        if (isnewfile && targetfileid) {
-          marksessioncreated(targetfileid)
+        if (data.system_prompt_meta) {
+          lastsystempromptmeta = data.system_prompt_meta
         }
-        if ((isnewfile || isuseropen || (call.name === 'youtube_video' && String(call.args?.action || '').toLowerCase() === 'download')) && targetfileid) {
+        if (data.model) {
+          lastagentmodel = data.model
+        }
+
+        removestatus()
+
+        const finaltools = (data.tool_calls && data.tool_calls.length > 0) ? data.tool_calls : toolscollected
+
+        if (finaltools.length > 0) {
+          // refresh notes tree in sidebar only so active editor view and animations are not interrupted --------------------
           await loadnotes()
-          await opennote(targetfileid, { newtab: true, force: true })
-        }
 
-        // close tabs if file was deleted --------------------
-        if (call.name === 'file_delete') {
-          const delid = call.args?.path || call.args?.file_path || call.args?.note_id
-          if (delid) {
-            closetab(delid)
-            closetab(`preview:${delid}`)
-          }
-        }
-
-        // close tabs and safely adjust folder view if folder was deleted --------------------
-        if (call.name === 'folder_delete' && call.args?.folder_path) {
-          const delfolder = call.args.folder_path
-          const delprefix = `${delfolder}/`
-          const tabsremaining = state.opentabs.filter(t => !t.startsWith(delprefix) && t !== delfolder)
-          if (tabsremaining.length !== state.opentabs.length) {
-            state.opentabs = tabsremaining
-            if (state.activenoteid && (state.activenoteid.startsWith(delprefix) || state.activenoteid === delfolder)) {
-              if (tabsremaining.length > 0) {
-                opennote(tabsremaining[0], { force: true, replacecurrent: false, switchfolder: false })
-              } else {
-                closenote()
-              }
-            }
-            rendertabs()
-            saveworkspacestate()
-          }
-          if (state.currentfolder === delfolder || state.currentfolder.startsWith(delprefix)) {
-            const parentparts = delfolder.split('/').slice(0, -1)
-            navigatefolder(parentparts.join('/'))
-          }
-        }
-
-        // update open tabs if file or folder was moved or renamed --------------------
-        if (call.name === 'file_move' && call.args) {
-          const src = call.args.source
-          const dest = call.args.destination
-          const isfolder = call.args.move_type === 'folder'
-          if (src && dest) {
-            let tabsmodified = false
-            if (isfolder) {
-              const srcprefix = src.endsWith('/') ? src : `${src}/`
-              const destprefix = dest.endsWith('/') ? dest : `${dest}/`
-              state.opentabs = state.opentabs.map(tabid => {
-                if (tabid.startsWith(srcprefix)) {
-                  tabsmodified = true
-                  return `${destprefix}${tabid.slice(srcprefix.length)}`
-                }
-                return tabid
+          if (state.activenoteid?.startsWith('preview:')) {
+            const previewtarget = getpreviewtargetid(state.activenoteid)
+            if (previewtarget) {
+              const sourcetouched = finaltools.some((call) => {
+                const toolpath = call.args?.path || call.args?.file_path || call.args?.note_id
+                if (!toolpath) return false
+                if (call.name !== 'textfile_edit_diff' && call.name !== 'textfile_create') return false
+                return isnoteidmatch(toolpath, previewtarget)
               })
-              if (state.activenoteid && state.activenoteid.startsWith(srcprefix)) {
-                state.activenoteid = `${destprefix}${state.activenoteid.slice(srcprefix.length)}`
-              }
-              if (state.currentfolder && (state.currentfolder === src || state.currentfolder.startsWith(srcprefix))) {
-                state.currentfolder = `${destprefix}${state.currentfolder.slice(srcprefix.length)}`.replace(/\/$/, '')
-              }
-            } else {
-              if (state.opentabs.includes(src)) {
-                state.opentabs = state.opentabs.map(t => t === src ? dest : t)
-                tabsmodified = true
-              }
-              if (state.activenoteid === src) {
-                state.activenoteid = dest
+              if (sourcetouched) {
+                await renderpreview(previewtarget)
               }
             }
-            if (tabsmodified) {
-              rendertabs()
-              saveworkspacestate()
+          }
+
+          // if ai generated a new file or opened a file for user open it in a new tab --------------------
+          for (const call of finaltools) {
+            const isnewfile = call.name === 'textfile_create'
+            const isuseropen = call.name === 'file_open_for_user'
+              || (call.name === 'textfile_read' && call.args?.open_in_tab)
+            let targetfileid = call.args?.path || call.args?.file_path || call.args?.note_id
+            if (call.name === 'youtube_video' && String(call.args?.action || '').toLowerCase() === 'download') {
+              try {
+                const parsed = typeof call.output === 'string' ? JSON.parse(call.output) : call.output
+                if (parsed?.path && parsed?.open_in_tab !== false) {
+                  targetfileid = parsed.path
+                }
+              } catch { }
+            }
+            if (!targetfileid && call.name === 'textfile_create') {
+              // fallback to parse file id from output --------------------
+              const match = String(call.output || '').match(/\[(.*?)\]/)
+              if (match) targetfileid = match[1]
+            }
+            if (isnewfile && targetfileid) {
+              marksessioncreated(targetfileid)
+            }
+            if ((isnewfile || isuseropen || (call.name === 'youtube_video' && String(call.args?.action || '').toLowerCase() === 'download')) && targetfileid) {
+              await loadnotes()
+              await opennote(targetfileid, { newtab: true, force: true })
+            }
+
+            // close tabs if file was deleted --------------------
+            if (call.name === 'file_delete') {
+              const delid = call.args?.path || call.args?.file_path || call.args?.note_id
+              if (delid) {
+                closetab(delid)
+                closetab(`preview:${delid}`)
+              }
+            }
+
+            // close tabs and safely adjust folder view if folder was deleted --------------------
+            if (call.name === 'folder_delete' && call.args?.folder_path) {
+              const delfolder = call.args.folder_path
+              const delprefix = `${delfolder}/`
+              const tabsremaining = state.opentabs.filter(t => !t.startsWith(delprefix) && t !== delfolder)
+              if (tabsremaining.length !== state.opentabs.length) {
+                state.opentabs = tabsremaining
+                if (state.activenoteid && (state.activenoteid.startsWith(delprefix) || state.activenoteid === delfolder)) {
+                  if (tabsremaining.length > 0) {
+                    opennote(tabsremaining[0], { force: true, replacecurrent: false, switchfolder: false })
+                  } else {
+                    closenote()
+                  }
+                }
+                rendertabs()
+                saveworkspacestate()
+              }
+              if (state.currentfolder === delfolder || state.currentfolder.startsWith(delprefix)) {
+                const parentparts = delfolder.split('/').slice(0, -1)
+                navigatefolder(parentparts.join('/'))
+              }
+            }
+
+            // update open tabs if file or folder was moved or renamed --------------------
+            if (call.name === 'file_move' && call.args) {
+              const src = call.args.source
+              const dest = call.args.destination
+              const isfolder = call.args.move_type === 'folder'
+              if (src && dest) {
+                let tabsmodified = false
+                if (isfolder) {
+                  const srcprefix = src.endsWith('/') ? src : `${src}/`
+                  const destprefix = dest.endsWith('/') ? dest : `${dest}/`
+                  state.opentabs = state.opentabs.map(tabid => {
+                    if (tabid.startsWith(srcprefix)) {
+                      tabsmodified = true
+                      return `${destprefix}${tabid.slice(srcprefix.length)}`
+                    }
+                    return tabid
+                  })
+                  if (state.activenoteid && state.activenoteid.startsWith(srcprefix)) {
+                    state.activenoteid = `${destprefix}${state.activenoteid.slice(srcprefix.length)}`
+                  }
+                  if (state.currentfolder && (state.currentfolder === src || state.currentfolder.startsWith(srcprefix))) {
+                    state.currentfolder = `${destprefix}${state.currentfolder.slice(srcprefix.length)}`.replace(/\/$/, '')
+                  }
+                } else {
+                  if (state.opentabs.includes(src)) {
+                    state.opentabs = state.opentabs.map(t => t === src ? dest : t)
+                    tabsmodified = true
+                  }
+                  if (state.activenoteid === src) {
+                    state.activenoteid = dest
+                  }
+                }
+                if (tabsmodified) {
+                  rendertabs()
+                  saveworkspacestate()
+                }
+              }
             }
           }
         }
-      }
-    }
 
-    const finalreply = sanitizestreamtext(data.reply ?? (rawreplytext || (agentbubble ? agentbubble.textContent : '')))
-    flushbufferedreply(finalreply)
+        const finalreply = sanitizestreamtext(data.reply ?? (rawreplytext || (agentbubble ? agentbubble.textContent : '')))
+        flushbufferedreply(finalreply)
 
-    if (!agentmsg) {
-      agentmsg = document.createElement('div')
-      agentmsg.className = 'ai-msg agent'
-      agentbubble = document.createElement('div')
-      agentbubble.className = 'msg-bubble rendered-md'
-      applychatmarkdownto(agentbubble, finalreply || '(no response)')
-      agentmsg.appendChild(agentbubble)
-      aimessages.appendChild(agentmsg)
-    } else if (agentbubble) {
-      agentbubble.classList.add('rendered-md')
-      applychatmarkdownto(agentbubble, finalreply || '(no response)')
-    }
+        if (!agentmsg) {
+          agentmsg = document.createElement('div')
+          agentmsg.className = 'ai-msg agent'
+          agentbubble = document.createElement('div')
+          agentbubble.className = 'msg-bubble rendered-md'
+          applychatmarkdownto(agentbubble, finalreply || '(no response)')
+          agentmsg.appendChild(agentbubble)
+          aimessages.appendChild(agentmsg)
+        } else if (agentbubble) {
+          agentbubble.classList.add('rendered-md')
+          applychatmarkdownto(agentbubble, finalreply || '(no response)')
+        }
 
-    // render interactive options chips if present --------------------
-    const optionsrow = buildoptionsrow(data.options || [])
-    if (optionsrow) agentmsg.appendChild(optionsrow)
+        // render interactive options chips if present --------------------
+        const optionsrow = buildoptionsrow(data.options || [])
+        if (optionsrow) agentmsg.appendChild(optionsrow)
 
-    const assistantlogindex = conversationlog.length
-    appendcopyactions(agentmsg, finalreply || '', finalreply ? {
-      text: finalreply,
-      role: 'assistant',
-      logIndex: assistantlogindex,
-      timestamp: new Date().toISOString()
-    } : null)
+        const assistantlogindex = conversationlog.length
+        appendcopyactions(agentmsg, finalreply || '', finalreply ? {
+          text: finalreply,
+          role: 'assistant',
+          logIndex: assistantlogindex,
+          timestamp: new Date().toISOString()
+        } : null)
 
-    // update chat history with full sdk turns or fallback append --------------------
-    if (data.history && Array.isArray(data.history)) {
-      aichathistory = data.history
-    } else {
-      const modelturncontent = (finalreply || '') + (data.options?.length ? `\n<options>${JSON.stringify(data.options)}</options>` : '')
-      aichathistory.push({ role: 'user', content: prompt })
-      aichathistory.push({ role: 'model', content: modelturncontent })
-    }
+        // update chat history with full sdk turns or fallback append --------------------
+        if (data.history && Array.isArray(data.history)) {
+          aichathistory = data.history
+        } else {
+          const modelturncontent = (finalreply || '') + (data.options?.length ? `\n<options>${JSON.stringify(data.options)}</options>` : '')
+          aichathistory.push({ role: 'user', content: prompt })
+          aichathistory.push({ role: 'model', content: modelturncontent })
+        }
 
-    const debugtools =
-      data.tool_calls_folded?.length > 0
-        ? data.tool_calls_folded
-        : finaltools.map((call) => ({
-          name: call.name,
-          args: call.args,
-          output: call.output,
-        }))
+        const debugtools =
+          data.tool_calls_folded?.length > 0
+            ? data.tool_calls_folded
+            : finaltools.map((call) => ({
+              name: call.name,
+              args: call.args,
+              output: call.output,
+            }))
 
-    // record assistant response in conversation log (folded tools match gemini history) --------------------
-    conversationlog.push({
-      role: 'assistant',
-      thought: data.thought?.trim() || null,
-      tool_calls: debugtools,
-      reply: finalreply || '',
-      options: data.options || [],
-      timestamp: new Date().toISOString()
-    })
+        // record assistant response in conversation log (folded tools match gemini history) --------------------
+        conversationlog.push({
+          role: 'assistant',
+          thought: data.thought?.trim() || null,
+          tool_calls: debugtools,
+          reply: finalreply || '',
+          options: data.options || [],
+          timestamp: new Date().toISOString()
+        })
         break
       } catch (innerErr) {
         if (chatattempt === 0 && isnetworkretryerror(innerErr)) continue
@@ -1814,9 +1814,9 @@ export async function senduserprompt(text) {
     import('./conversations.js')
       .then((m) => {
         m.schedulesaveactiveconversation()
-        m.maybegeneratetitleforactive().catch(() => {})
+        m.maybegeneratetitleforactive().catch(() => { })
       })
-      .catch(() => {})
+      .catch(() => { })
   }
 }
 
