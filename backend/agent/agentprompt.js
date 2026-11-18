@@ -42,6 +42,8 @@ const toolrouting = `Tool routing (follow this map):
 - github gitlab bitbucket codeberg or *.git urls to keep locally: download (auto clones public repos; mode file forces raw download)
 - webhook or rest api checks: api_request with method headers and body as needed
 - math, arithmetic, dates, timezone math, statistics, or data transformations: always use eval_js to compute or verify instead of calculating mentally
+- alerts, job completions, reminders, or user notifications: notify (user, title, body, note) to send a push notification to user devices
+- active user notifications status is shown in Context (enabled, denied, or not set). if notifications are not enabled and the user asks for reminders, alerts, or scheduled notify jobs, check this status and advise them to turn on notifications in settings (under the jobs help tip in the mobile PWA on Android or iOS) so they can receive them
 - file edits: textfile_edit_diff first, no chit-chat in tool turns`
 
 const citerules = `Chat cites (pills in chat replies only, never inside vault files):
@@ -105,6 +107,7 @@ export function buildsystemprompt(options = {}) {
     locationname = '',
     datestr = '',
     clientinfo = '',
+    notificationstatus = 'not set',
   } = options
 
   const active = activeuser ? activeuser.name || activeuser.id : 'unknown'
@@ -118,6 +121,7 @@ export function buildsystemprompt(options = {}) {
       : ` | active: [${activenoteid}]`)
     : ''
   const clientline = clientinfo ? ` | client: ${clientinfo}` : ''
+  const notifline = ` | notifications: ${notificationstatus}`
   const locationline = locationname ? `\n- location: ${locationname}` : ''
   const weatherline = weatherinfo ? `\n- weather: ${weatherinfo}` : ''
   const userpersonalitypath = `system/${activeuserid}/personality.md`
@@ -140,7 +144,7 @@ ${otheruserpaths ? `- other users: ${otheruserpaths}` : '- other users: none'}
     : ''
 
   const sessionblock = `Context:
-- mushnote | assistant: ${ainame} | user: ${active} | users: ${userlist} | now: ${datestr}${clientline}${tabslist}${currentnote}${locationline}${weatherline}`
+- mushnote | assistant: ${ainame} | user: ${active}${notifline} | users: ${userlist} | now: ${datestr}${clientline}${tabslist}${currentnote}${locationline}${weatherline}`
 
   const activenoteheader =
     activenotemode === 'full'
@@ -176,7 +180,7 @@ ${chatrules}${memoryblock}${activeblock}${userpersonalitysection}${aipersonality
       active_note_mode: activenotemode,
       active_note_id: activenoteid || null,
       user_personality_path: userpersonalitypath,
-      session: { ainame, active_user: active, userlist, datestr, opentabs, locationname, weatherinfo, clientinfo },
+      session: { ainame, active_user: active, notification_status: notificationstatus, userlist, datestr, opentabs, locationname, weatherinfo, clientinfo },
     },
   }
 }

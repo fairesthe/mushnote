@@ -211,6 +211,7 @@ async function loadinitialsettings() {
   }
 
   await loadusersettings(selecteduserid)
+  renderpwanotifications()
 }
 
 // fetch all users and render radio list for admin --------------------
@@ -650,4 +651,153 @@ export function initsidebarsettings() {
       }
     })
   }
+
+  // mobile pwa notifications --------------------
+  initpwanotifications()
+}
+
+// mobile pwa detection for android and ios only --------------------
+function ismobilepwa() {
+  const isstandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+  const ua = navigator.userAgent || ''
+  const isandroid = /android/i.test(ua)
+  const isios = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  return isstandalone && (isandroid || isios)
+}
+
+// helper to convert url safe base64 to uint8array --------------------
+function urlb64touint8array(base64string) {
+  const padding = '='.repeat((4 - (base64string.length % 4)) % 4)
+  const base64 = (base64string + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawdata = window.atob(base64)
+  const outputarray = new Uint8Array(rawdata.length)
+  for (let i = 0; i < rawdata.length; ++i) {
+    outputarray[i] = rawdata.charCodeAt(i)
+  }
+  return outputarray
+}
+
+// subscribe client to push notifications on server --------------------
+async function subscribepush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+  try {
+    const reg = await navigator.serviceWorker.ready
+    const res = await api('/api/notifications/vapid-public-key')
+    if (!res || !res.public_key) return
+    const appserverkey = urlb64touint8array(res.public_key)
+    let sub = await reg.pushManager.getSubscription()
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: appserverkey
+      })
+    }
+    if (sub) {
+      await api('/api/notifications/subscribe', {
+        method: 'POST',
+        body: JSON.stringify({ subscription: sub })
+      })
+    }
+  } catch (err) {
+    // push subscription failed or blocked
+  }
+}
+
+// render mobile pwa notifications section --------------------
+function renderpwanotifications() {
+  const card = document.getElementById('pwa-notifications-card')
+  const control = document.getElementById('pwa-notif-control')
+  const instructions = document.getElementById('pwa-notif-instructions')
+  if (!card || !control || !instructions) return
+
+  if (!ismobilepwa()) {
+    card.classList.add('hidden')
+    return
+  }
+
+  card.classList.remove('hidden')
+  const permission = ('Notification' in window) ? Notification.permission : 'default'
+  const ua = navigator.userAgent || ''
+  const isandroid = /android/i.test(ua)
+
+  // denied state: red x with device settings help --------------------
+  if (permission === 'denied') {
+    api('/api/notifications/permission', { method: 'POST', body: JSON.stringify({ permission: 'denied' }) }).catch(() => {})
+    control.innerHTML = `
+      <div class="pwa-notif-status-denied">
+        <span class="pwa-notif-x">&times;</span>
+        <span>notifications denied</span>
+      </div>
+    `
+    const devicename = isandroid ? 'android' : 'ios'
+    const steptext = isandroid
+      ? `<li>touch and hold <strong>mushnote</strong> on your home screen and tap <strong>app info</strong> (or go to device <strong>settings --> apps --> mushnote</strong>)</li>
+         <li>tap <strong>notifications</strong></li>
+         <li>turn on <strong>allow notifications</strong></li>`
+      : `<li>open your device <strong>settings</strong></li>
+         <li>tap <strong>notifications</strong> (or find <strong>mushnote</strong> in the app list)</li>
+         <li>tap <strong>mushnote</strong> and turn on <strong>allow notifications</strong></li>`
+
+    instructions.innerHTML = `
+      <div class="pwa-notif-help-title">how to enable in ${devicename} settings:</div>
+      <ol class="pwa-notif-help-steps">${steptext}</ol>
+    `
+    instructions.classList.remove('hidden')
+    return
+  }
+
+  // granted state: accent colored checkmark and green text --------------------
+  if (permission === 'granted') {
+    control.innerHTML = `
+      <div class="pwa-notif-status-granted">
+        <span class="pwa-notif-checkmark">&#10003;</span>
+        <span class="pwa-notif-granted-text">notifications enabled</span>
+      </div>
+    `
+    instructions.classList.add('hidden')
+    instructions.innerHTML = ''
+    subscribepush()
+    return
+  }
+
+  // unchecked checkbox when not enabled yet --------------------
+  control.innerHTML = `
+    <label class="pwa-notif-checkbox-label">
+      <input type="checkbox" id="pwa-notif-toggle" class="pwa-notif-checkbox">
+      <span>enable notifications</span>
+    </label>
+  `
+  instructions.classList.add('hidden')
+  instructions.innerHTML = ''
+
+  const toggle = document.getElementById('pwa-notif-toggle')
+  if (toggle) {
+    toggle.addEventListener('change', async () => {
+      if (!toggle.checked) return
+      if (!('Notification' in window)) return
+      try {
+        const nextperm = await Notification.requestPermission()
+        api('/api/notifications/permission', { method: 'POST', body: JSON.stringify({ permission: nextperm }) }).catch(() => {})
+        if (nextperm === 'granted') {
+          await subscribepush()
+        }
+      } catch {}
+      renderpwanotifications()
+    })
+  }
+}
+
+// initialize pwa notifications listeners --------------------
+function initpwanotifications() {
+  renderpwanotifications()
+
+  // refresh status when switching back from device settings --------------------
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      renderpwanotifications()
+    }
+  })
+  window.addEventListener('focus', () => {
+    renderpwanotifications()
+  })
 }

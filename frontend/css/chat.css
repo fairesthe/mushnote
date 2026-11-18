@@ -559,6 +559,10 @@
   color: #f87171;
 }
 
+.tool-badge-notify {
+  color: var(--accent-color, #60a5fa);
+}
+
 .tool-badge-generic {
   color: #94a3b8;
 }

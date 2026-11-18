@@ -153,6 +153,122 @@
   border-radius: 6px;
 }
 
+/* mobile pwa notifications card -------------------- */
+.pwa-notifications-card {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--ai-input-surface);
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  user-select: none;
+}
+
+.pwa-notifications-card.hidden {
+  display: none !important;
+}
+
+.pwa-notif-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.pwa-notif-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-color);
+  cursor: pointer;
+}
+
+.pwa-notif-checkbox {
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent-color);
+}
+
+.pwa-notif-status-denied {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #ef4444;
+}
+
+.pwa-notif-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: #ef4444;
+  font-weight: bold;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.pwa-notif-status-granted {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.pwa-notif-checkmark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-color);
+  font-weight: bold;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.pwa-notif-granted-text {
+  color: #22c55e;
+  font-weight: 500;
+}
+
+.pwa-notif-instructions {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-color);
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--muted-color);
+}
+
+.pwa-notif-instructions.hidden {
+  display: none !important;
+}
+
+.pwa-notif-help-title {
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 0 0 4px 0;
+}
+
+.pwa-notif-help-steps {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pwa-notif-help-steps li {
+  margin: 0;
+}
+
+.pwa-notif-help-steps strong {
+  color: var(--text-color);
+}
+
 .settings-form {
   display: flex;
   flex-direction: column;

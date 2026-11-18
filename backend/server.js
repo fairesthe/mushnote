@@ -24,6 +24,7 @@ import {
 import { initvaultwatcher } from './vault/watcher.js'
 import { log, printbanner, requestlogger } from './core/logger.js'
 import { registerv1routes } from './http/v1routes.js'
+import { getvapidpublickey, savesubscription, removesubscription, getsubscriptions, setuserpermission, getnotificationstatus } from './core/notifications.js'
 
 // configuration and initialization --------------------
 const config = loadconfig()
@@ -480,6 +481,73 @@ app.post('/api/user/preferences', (req, res) => {
   }
 
   res.json({ status: 'ok', preferences: updated, user })
+})
+
+// notifications public vapid key --------------------
+app.get('/api/notifications/vapid-public-key', (req, res) => {
+  try {
+    const key = getvapidpublickey(vaultdir)
+    res.json({ public_key: key })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// register push subscription --------------------
+app.post('/api/notifications/subscribe', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!session) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+
+  const { subscription } = req.body || {}
+  if (!subscription) {
+    return res.status(400).json({ error: 'subscription is required' })
+  }
+
+  const saved = savesubscription(vaultdir, session.user_id, subscription, req.headers['user-agent'] || '')
+  res.json({ status: saved ? 'ok' : 'failed' })
+})
+
+// unregister push subscription --------------------
+app.post('/api/notifications/unsubscribe', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!session) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+
+  const { endpoint } = req.body || {}
+  removesubscription(vaultdir, endpoint)
+  res.json({ status: 'ok' })
+})
+
+// check notification status for current user --------------------
+app.get('/api/notifications/status', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!session) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+
+  const status = getnotificationstatus(vaultdir, session.user_id)
+  const subs = getsubscriptions(vaultdir, session.user_id)
+  res.json({ status, enabled: status === 'enabled', count: subs.length })
+})
+
+// update notification permission for current user --------------------
+app.post('/api/notifications/permission', (req, res) => {
+  const token = extracttoken(req)
+  const session = getsession(token)
+  if (!session) {
+    return res.status(401).json({ error: 'unauthorized' })
+  }
+
+  const { permission } = req.body || {}
+  setuserpermission(vaultdir, session.user_id, permission)
+  const status = getnotificationstatus(vaultdir, session.user_id)
+  res.json({ status: 'ok', notification_status: status })
 })
 
 // list all notes and folders in vault respecting user permissions --------------------
@@ -1073,8 +1141,12 @@ app.post('/api/agent/chat', async (req, res) => {
   const session = getsession(token)
   const activeuserid = session ? session.user_id : 'wyatt'
   const isadmin = session ? Boolean(session.admin) : false
-  const { message = '', history = [], active_note_id, open_tabs = [], attachments = [] } = req.body
+  const { message = '', history = [], active_note_id, open_tabs = [], attachments = [], notification_permission } = req.body
   const clientinfo = parseclientinfo(req)
+
+  if (notification_permission) {
+    setuserpermission(vaultdir, activeuserid, notification_permission)
+  }
 
   if (!message && (!attachments || attachments.length === 0)) {
     return res.status(400).json({ error: 'message or attachment is required' })

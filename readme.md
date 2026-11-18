@@ -45,6 +45,7 @@ self-host for a **small group** — a couple, roommates, close friends — on on
 **mobile and pwa**
 - installable progressive web app (pwa) on ios and android via add to home screen
 - standalone mobile UI for quickly jotting down notes, checking off todos, or tracking calories on the go
+- native push notification support for scheduled jobs and agent alerts, with one-tap opening directly to notes
 
 **external api (v1)**
 - register a dedicated user (`POST /api/v1/auth/register` with admin token or `registration_secret`)
@@ -62,6 +63,7 @@ self-host for a **small group** — a couple, roommates, close friends — on on
 | ![download](resources/icons/tools/tool-download.png) | `download` | save an http(s) file into the vault, or shallow-clone a public git repo |
 | ![api_request](resources/icons/tools/tool-api-request.png) | `api_request` | http GET/POST/PUT/PATCH/DELETE for json or form apis; optional save response to vault |
 | ![eval_js](resources/icons/tools/tool-eval-js.png) | `eval_js` | execute sandboxed javascript for math, dates, timezones, data transformations, or calculations |
+| ![notify](resources/icons/tools/tool-notify.png) | `notify` | send a push notification to user devices (optional title, body, and note link) |
 | ![archive_extract](resources/icons/tools/tool-archive-extract.png) | `archive_extract` | unpack a vault `.zip`, `.jar`, `.7z`, or `.rar` into a folder next to it |
 | ![textfile_read](resources/icons/tools/tool-textfile-read.png) | `textfile_read` | read a text/code file; optional heading or line slice; `mode=outline` for headings only |
 | ![file_analyze](resources/icons/tools/tool-file-analyze.png) | `file_analyze` | load image/pdf/audio/video into gemini, or `mode=metadata` for size/dates/type |

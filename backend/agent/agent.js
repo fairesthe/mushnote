@@ -8,6 +8,7 @@ import { compresschathistory, foldtooloutputfordisplay } from './chat/chathistor
 import { sanitizereplycites } from './chat/chatreplysanitize.js'
 import { recovertoolcallsfromtext, striphallucinatedtoolcalls } from './chat/texttoolrecovery.js'
 import { buildsystemprompt, userreferencesactivenote } from './agentprompt.js'
+import { getnotificationstatus } from '../core/notifications.js'
 
 const agentmodel = 'gemini-3.5-flash-lite'
 const maxtooliterations = 8
@@ -209,6 +210,9 @@ function formattoolstatus(call) {
   if (name === 'eval_js') {
     return 'calculating...'
   }
+  if (name === 'notify') {
+    return args.user ? `sending notification to ${args.user}...` : 'sending notification...'
+  }
   return 'working...'
 }
 
@@ -319,6 +323,7 @@ export async function runagentchat(prompt, options = {}) {
     prompt,
     attachments
   )
+  const notificationstatus = getnotificationstatus(vaultdir, active_user_id)
   const systempromptpack = buildsystemprompt({
     ainame,
     activeuser,
@@ -333,6 +338,7 @@ export async function runagentchat(prompt, options = {}) {
     locationname,
     datestr,
     clientinfo: client_info,
+    notificationstatus,
   })
   const systeminstruction = systempromptpack.text
   const systempromptmeta = systempromptpack.meta

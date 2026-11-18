@@ -9,6 +9,7 @@ import { initsidebarsettings } from '../workspace/settings.js'
 import { initpreview } from '../workspace/preview.js'
 import { initosfiledrop } from '../workspace/osfiledrop.js'
 import { initspellcheckdisabled } from './spellcheck.js'
+import { opennote } from '../editor/editor.js'
 
 // freeze mobile vs desktop from the url before any layout work --------------------
 applymobileboot()
@@ -18,6 +19,76 @@ if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {})
   })
+
+  // handle notification messages from service worker --------------------
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data?.type === 'open_note' && e.data.note_id) {
+      opennote(e.data.note_id, { newtab: true, switchfolder: true })
+    } else if (e.data?.type === 'in_app_toast') {
+      showinapptoast({
+        title: e.data.title,
+        body: e.data.body,
+        note: e.data.note
+      })
+    }
+  })
+}
+
+// display in-app notification toast --------------------
+export function showinapptoast({ title = 'mushnote', body = '', note = null } = {}) {
+  let container = document.getElementById('app-toast-container')
+  if (!container) {
+    container = document.createElement('div')
+    container.id = 'app-toast-container'
+    container.className = 'app-toast-container'
+    document.body.appendChild(container)
+  }
+
+  const toast = document.createElement('div')
+  toast.className = `app-toast${note ? ' is-clickable' : ''}`
+
+  const safeTitle = document.createElement('span')
+  safeTitle.textContent = title
+  const safeBody = document.createElement('span')
+  safeBody.textContent = body
+
+  toast.innerHTML = `
+    <img class="app-toast-icon" src="/applogo-192.png" alt="">
+    <div class="app-toast-content">
+      <div class="app-toast-title">${safeTitle.innerHTML}</div>
+      <div class="app-toast-body">${safeBody.innerHTML}</div>
+    </div>
+    <button type="button" class="app-toast-close" aria-label="close">&times;</button>
+  `
+
+  const closebtn = toast.querySelector('.app-toast-close')
+  const content = toast.querySelector('.app-toast-content')
+
+  function dismiss() {
+    toast.classList.add('is-leaving')
+    setTimeout(() => toast.remove(), 220)
+  }
+
+  closebtn?.addEventListener('click', (e) => {
+    e.stopPropagation()
+    dismiss()
+  })
+
+  if (note) {
+    content?.addEventListener('click', () => {
+      opennote(note, { newtab: true, switchfolder: true })
+      dismiss()
+    })
+  }
+
+  container.appendChild(toast)
+
+  // auto dismiss after 5 seconds --------------------
+  setTimeout(() => {
+    if (toast.isConnected) {
+      dismiss()
+    }
+  }, 5000)
 }
 
 // dom elements for workspace header --------------------

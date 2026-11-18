@@ -664,6 +664,7 @@ const tooliconmap = {
   download: '/resources/icons/tools/tool-download.png',
   api_request: '/resources/icons/tools/tool-api-request.png',
   eval_js: '/resources/icons/tools/tool-eval-js.png',
+  notify: '/resources/icons/tools/tool-notify.png',
   textfile_edit_diff: '/resources/icons/tools/tool-textfile-edit-diff.png',
   textfile_history: '/resources/icons/tools/tool-textfile-history.png'
 }
@@ -831,6 +832,16 @@ export function formattoolmeta(call) {
     }
   }
 
+  if (name === 'notify') {
+    const userlabel = args.user ? ` ${args.user}` : ''
+    const title = args.title ? `: ${args.title}` : ''
+    return {
+      icon,
+      label: `notified${userlabel}${title}`,
+      colorclass: 'tool-badge-notify'
+    }
+  }
+
   return { icon, label: `used ${name}`, colorclass: 'tool-badge-generic' }
 }
 
@@ -926,6 +937,9 @@ export function formattoolstatustext(call) {
   }
   if (name === 'eval_js') {
     return 'calculating...'
+  }
+  if (name === 'notify') {
+    return args.user ? `sending notification to ${args.user}...` : 'sending notification...'
   }
 
   return 'working...'
@@ -1405,7 +1419,8 @@ export async function senduserprompt(text) {
       attachments: attached.map(mapattachmentforapi),
       active_note_id: state.activenoteid,
       open_tabs: state.opentabs,
-      history: aichathistory
+      history: aichathistory,
+      notification_permission: ('Notification' in window) ? Notification.permission : undefined
     })
 
     for (let chatattempt = 0; chatattempt < 2; chatattempt++) {

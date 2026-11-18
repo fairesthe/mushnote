@@ -17,6 +17,8 @@ import { extractarchive } from '../integrations/archive.js'
 import { downloadorclone, islikelygiturl } from '../integrations/download.js'
 import { runapirequest } from '../integrations/apirequest.js'
 import { evaluatejavascript } from './evaljs.js'
+import { sendpushnotification, getnotificationstatus } from '../core/notifications.js'
+import { getvaultpath, loadconfig } from '../core/config.js'
 
 // prefer in-memory ytext when a note is open in the collab doc --------------------
 function noteforagent(vaultdir, noteid) {
@@ -405,6 +407,32 @@ export const tooldeclarations = [
       required: ['path']
     }
   },
+  {
+    name: 'notify',
+    description: 'Send a push notification to a user device. Use when an alert triggers, a job or task completes, or the user requested to be notified. By default, status-bar badge on android is logo.png and the icon is the app icon.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        user: {
+          type: 'STRING',
+          description: 'Username to notify (e.g. "wyatt"). Omit or pass "all" to broadcast to all registered devices.'
+        },
+        title: {
+          type: 'STRING',
+          description: 'Notification title (default: "mushnote")'
+        },
+        body: {
+          type: 'STRING',
+          description: 'Notification message body'
+        },
+        note: {
+          type: 'STRING',
+          description: 'Optional vault note path to open when the notification is tapped (e.g. "todo.md" or "recipes/soup.md")'
+        }
+      },
+      required: ['body']
+    }
+  }
 ]
 
 // format relative time string --------------------
@@ -649,8 +677,11 @@ function historyrevisionview(historydir, noteid, revisionid) {
 }
 
 // execute tool calls against the vault --------------------
-export async function executetool(name, args, context) {
-  const { vaultdir, historydir, activeuser, partneruser, aiusername = 'ai', config } = context
+export async function executetool(name, args, context = {}) {
+  let { vaultdir, historydir, activeuser, partneruser, aiusername = 'ai', config } = context
+  if (!vaultdir) {
+    vaultdir = getvaultpath(config || loadconfig())
+  }
 
   // web search --------------------
   if (name === 'web_search') {
@@ -1310,6 +1341,38 @@ export async function executetool(name, args, context) {
     if (view === 'chunk') return historychunkview(historydir, finalid, args.chunk_id)
     if (view === 'revision') return historyrevisionview(historydir, finalid, args.revision_id)
     return historyhourlyview(vaultdir, historydir, finalid, args.limit)
+  }
+
+  // send push notification --------------------
+  if (name === 'notify') {
+    const rawbody = (args.body || '').trim()
+    if (!rawbody) return 'error: body is required'
+    const title = (args.title || 'mushnote').trim()
+    const currentauthor = context.activeuserid || context.activeuser?.id || context.author
+    const targetuser = (args.user || currentauthor || '').trim().toLowerCase()
+    const note = (args.note || '').trim()
+
+    const payload = {
+      title,
+      body: rawbody,
+      icon: '/applogo-192.png',
+      badge: '/logo.png',
+      data: {
+        note: note || undefined
+      }
+    }
+
+    try {
+      const res = await sendpushnotification(vaultdir, targetuser, payload)
+      if (res.sent > 0) {
+        return `success: notification sent to ${targetuser || 'all'} (${res.sent}/${res.total} devices)`
+      }
+      const notifstatus = getnotificationstatus(vaultdir, targetuser)
+      return `error: notification could not be delivered to ${targetuser || 'user'} (notification status: ${notifstatus}, 0 registered devices). advise the user to enable notifications in settings (under the jobs help message in the mobile PWA on their device)`
+    } catch (err) {
+      const notifstatus = getnotificationstatus(vaultdir, targetuser)
+      return `error: failed sending notification to ${targetuser} (status: ${notifstatus}): ${err.message}`
+    }
   }
 
   return `error: unknown tool ${name}`
