@@ -123,6 +123,14 @@ export function schedulesaveactiveconversation() {
   }, 400)
 }
 
+window.addEventListener('beforeunload', () => {
+  if (savetimer) {
+    clearTimeout(savetimer)
+    savetimer = null
+    saveactiveconversation().catch(() => { })
+  }
+})
+
 export async function maybegeneratetitleforactive() {
   if (!activeconversationid || titlegenerated) return
   const payload = getconversationpersiststate()
@@ -173,6 +181,10 @@ export async function switchconversation(id) {
   }
   if (isagentchatbusy()) return
 
+  if (savetimer) {
+    clearTimeout(savetimer)
+    savetimer = null
+  }
   await saveactiveconversation().catch(() => {})
   await loadconversationbyid(id)
   setconversationsmode(false)

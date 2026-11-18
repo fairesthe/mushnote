@@ -68,6 +68,10 @@ body {
   overflow: hidden;
 }
 
+button {
+  user-select: none;
+}
+
 code,
 kbd,
 samp,

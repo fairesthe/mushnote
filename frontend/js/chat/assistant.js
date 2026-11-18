@@ -1841,7 +1841,7 @@ export async function senduserprompt(text) {
     if (aimessages) aimessages.scrollTop = aimessages.scrollHeight
     import('./conversations.js')
       .then((m) => {
-        m.schedulesaveactiveconversation()
+        m.saveactiveconversation().catch(() => { })
         m.maybegeneratetitleforactive().catch(() => { })
       })
       .catch(() => { })
@@ -2251,6 +2251,18 @@ export function initassistant() {
   // copy full conversation with system prompt in json format --------------------
   if (ctxitemcopychat) {
     ctxitemcopychat.addEventListener('click', async () => {
+      const exportlog = conversationlog.map((entry) => ({ ...entry }))
+      if (exportlog.length > 0 && exportlog[exportlog.length - 1].role === 'user') {
+        const lastbubble = aimessages?.querySelector('.ai-msg.agent:last-child .msg-bubble')
+        const currentreply = (lastbubble ? lastbubble.textContent : '').trim()
+        if (currentreply) {
+          exportlog.push({
+            role: 'assistant',
+            reply: currentreply,
+            timestamp: new Date().toISOString()
+          })
+        }
+      }
       const payload = {
         export_version: 2,
         model: lastagentmodel || null,
@@ -2259,7 +2271,7 @@ export function initassistant() {
         notes: {
           tool_outputs: 'tool_calls outputs are folded like gemini history (youtube transcripts omitted)',
         },
-        conversation: conversationlog
+        conversation: exportlog
       }
       const json = JSON.stringify(payload, null, 2)
       try {
