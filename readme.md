@@ -57,6 +57,7 @@ self-host for a **small group** — a couple, roommates, close friends — on on
 | ![youtube_video](resources/icons/tools/tool-youtube-video.png) | `youtube_video` | youtube `info`, `transcript`, or `download` (audio/video) via yt-dlp |
 | ![download](resources/icons/tools/tool-download.png) | `download` | save an http(s) file into the vault, or shallow-clone a public git repo |
 | ![api_request](resources/icons/tools/tool-api-request.png) | `api_request` | http GET/POST/PUT/PATCH/DELETE for json or form apis; optional save response to vault |
+| ![eval_js](resources/icons/tools/tool-eval-js.png) | `eval_js` | execute sandboxed javascript for math, dates, timezones, data transformations, or calculations |
 | ![archive_extract](resources/icons/tools/tool-archive-extract.png) | `archive_extract` | unpack a vault `.zip`, `.jar`, `.7z`, or `.rar` into a folder next to it |
 | ![textfile_read](resources/icons/tools/tool-textfile-read.png) | `textfile_read` | read a text/code file; optional heading or line slice; `mode=outline` for headings only |
 | ![file_analyze](resources/icons/tools/tool-file-analyze.png) | `file_analyze` | load image/pdf/audio/video into gemini, or `mode=metadata` for size/dates/type |
