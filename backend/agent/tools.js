@@ -16,6 +16,7 @@ import {
 import { extractarchive } from '../integrations/archive.js'
 import { downloadorclone, islikelygiturl } from '../integrations/download.js'
 import { runapirequest } from '../integrations/apirequest.js'
+import { evaluatejavascript } from './evaljs.js'
 
 // prefer in-memory ytext when a note is open in the collab doc --------------------
 function noteforagent(vaultdir, noteid) {
@@ -300,6 +301,24 @@ export const tooldeclarations = [
         }
       },
       required: ['url']
+    }
+  },
+  {
+    name: 'eval_js',
+    description: 'Execute a sandboxed JavaScript expression or snippet for calculations, arithmetic, date/time math, string formatting, statistics, or data transformations. Standard globals like Math, Date, JSON, RegExp, Array, Object, Map, Set, and console.log are available. Always use this tool to calculate or verify math rather than computing mentally.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        code: {
+          type: 'STRING',
+          description: 'JavaScript code to execute (e.g. "Math.sqrt(144)" or "const d1 = new Date(); return d1.toISOString()")'
+        },
+        timeout_ms: {
+          type: 'INTEGER',
+          description: 'Optional execution timeout in ms (default 2000, max 5000)'
+        }
+      },
+      required: ['code']
     }
   },
   {
@@ -755,8 +774,9 @@ export async function executetool(name, args, context) {
         reply_hint: `saved ${saved.media || media} at ${saved.path}. use file_open_for_user when the user should play it in a tab`,
       })
     } catch (err) {
-      log.agent('youtube_video', action, String(err.message || err))
-      return `error: youtube ${action} failed (${err.message || err})`
+      const errdetail = err.stderr || err.stdout || err.message || String(err)
+      log.agent('youtube_video', action, errdetail)
+      return `error: youtube ${action} failed (${errdetail}). tell the user clearly that reading or accessing this youtube video failed due to this error, do not hallucinate video contents or search the web for it`
     }
   }
 
@@ -1302,6 +1322,21 @@ export async function executetool(name, args, context) {
     } catch (err) {
       return `error: ${err.message}`
     }
+  }
+
+  // evaluate sandboxed javascript --------------------
+  if (name === 'eval_js') {
+    const rawcode = (args.code || '').trim()
+    if (!rawcode) return 'error: code is required'
+    const timeout = typeof args.timeout_ms === 'number' ? args.timeout_ms : 2000
+    const res = evaluatejavascript(rawcode, timeout)
+    if (!res.success) {
+      return `error: ${res.error || 'execution failed'}`
+    }
+    const parts = []
+    if (res.result !== undefined) parts.push(`result: ${res.result}`)
+    if (res.logs) parts.push(`logs:\n${res.logs}`)
+    return parts.length ? parts.join('\n\n') : 'success (no output)'
   }
 
   // file history --------------------

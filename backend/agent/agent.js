@@ -209,6 +209,9 @@ function formattoolstatus(call) {
     const target = String(args.url || '').trim()
     return target ? `${method} ${target}...` : `${method} request...`
   }
+  if (name === 'eval_js') {
+    return 'calculating...'
+  }
   return 'working...'
 }
 

@@ -2,8 +2,26 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import youtubedl from 'youtube-dl-exec'
+import { spawnSync } from 'node:child_process'
+import defaultyoutubedl, { create } from 'youtube-dl-exec'
 import { hasffmpeg, ytdlpffmpegopts } from './ffmpegpath.js'
+
+// resolve yt-dlp binary: prefer local node_modules binary, fallback to system PATH --------------------
+function getytdlrunner() {
+  const localpath = defaultyoutubedl.constants?.YOUTUBE_DL_PATH
+  if (localpath && fs.existsSync(localpath)) {
+    return defaultyoutubedl
+  }
+  try {
+    const sys = spawnSync('yt-dlp', ['--version'], { encoding: 'utf8' })
+    if (sys.status === 0) {
+      return create('yt-dlp')
+    }
+  } catch {}
+  return defaultyoutubedl
+}
+
+const youtubedl = (...args) => getytdlrunner()(...args)
 
 const defaultlangs = ['en', 'en-us', 'en-gb']
 

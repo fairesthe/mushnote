@@ -2,7 +2,7 @@
 
 const hallpattern =
   /(?:<\s*)?s_call:[^:{\s]+:([\w]+)\s*\{([^}]*)\}/gi
-const barepattern = /\b(youtube_video|web_search|web_read_page|file_search|textfile_read|file_analyze|textfile_create|textfile_edit_diff|textfile_history|file_open_for_user|file_move|file_copy|file_delete|folder_delete|archive_extract|download|api_request)\s*\{([^}]*)\}/gi
+const barepattern = /\b(youtube_video|web_search|web_read_page|file_search|textfile_read|file_analyze|textfile_create|textfile_edit_diff|textfile_history|file_open_for_user|file_move|file_copy|file_delete|folder_delete|archive_extract|download|api_request|eval_js)\s*\{([^}]*)\}/gi
 
 function parsebracketargs(inner) {
   const args = {}

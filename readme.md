@@ -181,7 +181,19 @@ open [http://localhost:3000](http://localhost:3000) on your lan so others can jo
 
 to run mushnote as a background daemon on linux that launches on boot:
 
-1. create `/etc/systemd/system/mushnote.service`:
+1. install system packages:
+
+on linux, newer versions of npm frequently block binary download postinstall scripts. install `yt-dlp` and `ffmpeg` via your system package manager so the agent's youtube and media conversions work out of the box:
+
+```bash
+# arch linux
+sudo pacman -S nodejs npm yt-dlp ffmpeg
+
+# debian / ubuntu
+sudo apt update && sudo apt install nodejs npm yt-dlp ffmpeg
+```
+
+2. create `/etc/systemd/system/mushnote.service`:
 
 ```ini
 [Unit]
@@ -207,14 +219,14 @@ ReadWritePaths=/home/youruser/mushnote
 WantedBy=multi-user.target
 ```
 
-2. enable and start the service:
+3. enable and start the service:
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now mushnote
 ```
 
-3. check logs:
+4. check logs:
 
 ```bash
 journalctl -u mushnote -f

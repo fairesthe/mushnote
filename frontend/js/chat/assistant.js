@@ -664,6 +664,7 @@ const tooliconmap = {
   archive_extract: '/resources/icons/tools/tool-archive-extract.png',
   download: '/resources/icons/tools/tool-download.png',
   api_request: '/resources/icons/tools/tool-api-request.png',
+  eval_js: '/resources/icons/tools/tool-eval-js.png',
   textfile_edit_diff: '/resources/icons/tools/tool-textfile-edit-diff.png',
   textfile_history: '/resources/icons/tools/tool-textfile-history.png'
 }
@@ -825,11 +826,21 @@ export function formattoolmeta(call) {
     }
   }
 
+  if (name === 'eval_js') {
+    const code = String(args.code || '').trim()
+    const snippet = code.length > 28 ? `${code.slice(0, 28)}...` : (code || 'code')
+    return {
+      icon,
+      label: `evaluated ${snippet}`,
+      colorclass: 'tool-badge-view'
+    }
+  }
+
   return { icon, label: `used ${name}`, colorclass: 'tool-badge-generic' }
 }
 
-// format concise gray status text for non-admin tool execution --------------------
-export function formatnonadmintooltext(call) {
+// format concise status text for tool execution --------------------
+export function formattoolstatustext(call) {
   const name = call.name
   const args = call.args || {}
 
@@ -921,6 +932,9 @@ export function formatnonadmintooltext(call) {
     const method = String(args.method || 'GET').toUpperCase()
     const target = String(args.url || '').trim()
     return target ? `${method} ${target}...` : `${method} request...`
+  }
+  if (name === 'eval_js') {
+    return 'calculating...'
   }
 
   return 'working...'
@@ -1492,7 +1506,7 @@ export async function senduserprompt(text) {
               let toolname = parsed.tool || ''
               if (statustext.startsWith('running ') || statustext.startsWith('using ')) {
                 toolname = toolname || statustext.replace(/^(running|using)\s+/, '').replace(/\.\.\.$/, '')
-                statustext = formatnonadmintooltext({ name: toolname, args: {} })
+                statustext = formattoolstatustext({ name: toolname, args: {} })
               }
               const isthinking = statustext === 'thinking...' || /^thinking\b/i.test(statustext)
               // keep finished and in-progress tool lines while the model thinks between rounds --------------------

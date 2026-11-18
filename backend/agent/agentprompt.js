@@ -41,6 +41,7 @@ const toolrouting = `Tool routing (follow this map):
 - zip jar 7z or rar in the vault: archive_extract (unpacks into a folder next to the archive)
 - github gitlab bitbucket codeberg or *.git urls to keep locally: download (auto clones public repos; mode file forces raw download)
 - webhook or rest api checks: api_request with method headers and body as needed
+- math, arithmetic, dates, timezone math, statistics, or data transformations: always use eval_js to compute or verify instead of calculating mentally
 - file edits: textfile_edit_diff first, no chit-chat in tool turns`
 
 const citerules = `Chat cites (pills in chat replies only, never inside vault files):
