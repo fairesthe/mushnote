@@ -177,10 +177,7 @@ function formattoolstatus(call) {
     return args.source ? `copying ${args.source}...` : 'copying file...'
   }
   if (name === 'file_delete') {
-    return target ? `deleting ${target}...` : 'deleting file...'
-  }
-  if (name === 'folder_delete') {
-    return args.folder_path ? `deleting folder ${args.folder_path}...` : 'deleting folder...'
+    return target ? `deleting ${target}...` : 'deleting...'
   }
   if (name === 'archive_extract') {
     return target ? `extracting ${target}...` : 'extracting archive...'

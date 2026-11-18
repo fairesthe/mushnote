@@ -438,6 +438,40 @@ export function deletefolder(vaultdir, historydir, folderpath, author = 'unknown
   return true
 }
 
+// delete note or folder from the vault --------------------
+export function deletenoteorfolder(vaultdir, historydir, targetpath, author = 'unknown') {
+  initvault(vaultdir)
+  const cleanpath = targetpath.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  if (!cleanpath) {
+    throw new Error('path cannot be empty')
+  }
+
+  const fullpath = path.resolve(vaultdir, ...cleanpath.split('/'))
+  const vaultroot = path.resolve(vaultdir)
+  if (fullpath !== vaultroot && !fullpath.startsWith(vaultroot + path.sep)) {
+    throw new Error('invalid path')
+  }
+
+  if (fs.existsSync(fullpath) && fs.statSync(fullpath).isDirectory()) {
+    const deleted = deletefolder(vaultdir, historydir, cleanpath, author)
+    return { success: deleted, type: 'folder', path: cleanpath }
+  }
+
+  const filepath = getnotepath(vaultdir, cleanpath)
+  if (fs.existsSync(filepath)) {
+    if (fs.statSync(filepath).isDirectory()) {
+      const folderid = path.relative(vaultdir, filepath).replace(/\\/g, '/')
+      const deleted = deletefolder(vaultdir, historydir, folderid, author)
+      return { success: deleted, type: 'folder', path: folderid }
+    }
+    const noteid = path.relative(vaultdir, filepath).replace(/\\/g, '/')
+    const deleted = deletenote(vaultdir, noteid, historydir, author)
+    return { success: deleted, type: 'file', path: noteid }
+  }
+
+  return { success: false, type: 'unknown', path: cleanpath }
+}
+
 // resolve collision by appending (2), (3), etc. until free path found --------------------
 export function getuniqueconflictpath(vaultdir, targetid, isfolder = false) {
   const clean = targetid.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')

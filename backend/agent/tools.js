@@ -1,6 +1,6 @@
 import path from 'node:path'
 import fs from 'node:fs'
-import { listnotes, readnote, writenote, movenoteorfolder, copynoteorfolder, deletenote, deletefolder } from '../vault/vault.js'
+import { listnotes, readnote, writenote, movenoteorfolder, copynoteorfolder, deletenoteorfolder } from '../vault/vault.js'
 import { gethourlytimeline, getfiletimeline, getrevisionbyid, formatlinediff, describechangestat } from '../vault/history.js'
 import { getdoc, getdocifloaded, applydiff, migratedocentry, unliteralescapes, streaminsert, evictnotedoc, evictfolderdocs } from '../sync/sync.js'
 import { log } from '../core/logger.js'
@@ -240,30 +240,16 @@ export const tooldeclarations = [
   },
   {
     name: 'file_delete',
-    description: 'Permanently delete a file from the vault. Use when the user asks to delete, remove, or trash a file.',
+    description: 'Permanently delete a file or folder and all its contents from the vault. Use when the user asks to delete, remove, or trash a file or folder.',
     parameters: {
       type: 'OBJECT',
       properties: {
         path: {
           type: 'STRING',
-          description: 'Target file path to delete (e.g. "todo.md" or "recipes/soup.md" or "data.json")'
+          description: 'Target file or folder path to delete (e.g. "todo.md" or "recipes" or "archive/2025")'
         }
       },
       required: ['path']
-    }
-  },
-  {
-    name: 'folder_delete',
-    description: 'Permanently delete a folder and all its contents from the vault. Use when the user asks to delete, remove, or trash a folder.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        folder_path: {
-          type: 'STRING',
-          description: 'Target folder path to delete (e.g. "recipes" or "archive/2025")'
-        }
-      },
-      required: ['folder_path']
     }
   },
   {
@@ -1236,9 +1222,9 @@ export async function executetool(name, args, context) {
     }
   }
 
-  // delete file --------------------
+  // delete file or folder --------------------
   if (name === 'file_delete') {
-    const rawid = (args.path || args.file_path || args.note_id || '').trim()
+    const rawid = (args.path || args.file_path || args.note_id || args.folder_path || '').trim()
     if (!rawid) {
       return 'error: path is required'
     }
@@ -1251,43 +1237,19 @@ export async function executetool(name, args, context) {
     }
 
     try {
-      const deleted = deletenote(vaultdir, cleanid, historydir, aiusername)
-      if (deleted) {
-        evictnotedoc(historydir, cleanid)
-        log.note('delete', cleanid, `by ${aiusername}`)
-        args.path = cleanid
-        args.file_path = cleanid
-        args.note_id = cleanid
-        return `success: permanently deleted file [${cleanid}]`
+      const res = deletenoteorfolder(vaultdir, historydir, cleanid, aiusername)
+      if (res.success) {
+        if (res.type === 'file') {
+          evictnotedoc(historydir, res.path)
+        } else {
+          evictfolderdocs(historydir, res.path)
+        }
+        log.note('delete', res.path, `by ${aiusername} (${res.type})`)
+        args.path = res.path
+        args.delete_type = res.type
+        return `success: permanently deleted ${res.type} [${res.path}]`
       }
-      return `error: file "${cleanid}" not found`
-    } catch (err) {
-      return `error: ${err.message}`
-    }
-  }
-
-  // delete folder --------------------
-  if (name === 'folder_delete') {
-    const rawfolder = (args.folder_path || '').trim()
-    if (!rawfolder) {
-      return 'error: folder_path is required'
-    }
-
-    const cleanfolder = rawfolder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
-    if (cleanfolder.startsWith('system')) {
-      if (!context.isadmin) {
-        return 'error: access denied to system folders'
-      }
-    }
-
-    try {
-      const deleted = deletefolder(vaultdir, historydir, cleanfolder, 'ai')
-      if (deleted) {
-        evictfolderdocs(historydir, cleanfolder)
-        args.folder_path = cleanfolder
-        return `success: permanently deleted folder "${cleanfolder}"`
-      }
-      return `error: folder "${cleanfolder}" not found`
+      return `error: file or folder "${cleanid}" not found`
     } catch (err) {
       return `error: ${err.message}`
     }

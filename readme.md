@@ -42,9 +42,13 @@ self-host for a **small group** — a couple, roommates, close friends — on on
 - users in `vault/system/config.yaml` (passwords hashed on save)
 - admins can reach `system/` config and preferences
 
+**mobile and pwa**
+- installable progressive web app (pwa) on ios and android via add to home screen
+- standalone mobile UI for quickly jotting down notes, checking off todos, or tracking calories on the go
+
 **external api (v1)**
 - register a dedicated user (`POST /api/v1/auth/register` with admin token or `registration_secret`)
-- login → bearer token → list, read, put, patch notes under the vault
+- login --> bearer token --> list, read, put, patch notes under the vault
 - see [docs/api-v1.md](docs/api-v1.md)
 
 ## agent tools
@@ -64,11 +68,10 @@ self-host for a **small group** — a couple, roommates, close friends — on on
 | ![file_open_for_user](resources/icons/tools/tool-file-open-for-user.png) | `file_open_for_user` | open a vault file in an editor tab for the user |
 | ![textfile_create](resources/icons/tools/tool-textfile-create.png) | `textfile_create` | create a new text file |
 | ![textfile_edit_diff](resources/icons/tools/tool-textfile-edit-diff.png) | `textfile_edit_diff` | targeted edits (replace, insert, delete, append; batchable) |
-| ![textfile_history](resources/icons/tools/tool-textfile-history.png) | `textfile_history` | browse edit history: hourly → chunk → revision snapshot |
+| ![textfile_history](resources/icons/tools/tool-textfile-history.png) | `textfile_history` | browse edit history: hourly --> chunk --> revision snapshot |
 | ![file_move](resources/icons/tools/tool-file-move.png) | `file_move` | rename or move a file or folder |
 | ![file_copy](resources/icons/tools/tool-file-copy.png) | `file_copy` | copy a file or folder |
-| ![file_delete](resources/icons/tools/tool-file-delete.png) | `file_delete` | permanently delete a file |
-| ![folder_delete](resources/icons/tools/tool-folder-delete.png) | `folder_delete` | permanently delete a folder and its contents |
+| ![file_delete](resources/icons/tools/tool-file-delete.png) | `file_delete` | permanently delete a file or folder and its contents |
 
 ## why this stack
 
@@ -102,21 +105,29 @@ without bright data keys, everything else still works — web tools return “no
 - **os:** windows, macos, or linux
 - **disk:** a writable `vault/` and `history/` path (defaults next to the repo)
 
-**youtube helpers (optional):**
-- `npm --prefix backend install` pulls **yt-dlp** through `youtube-dl-exec` and **ffmpeg** through `ffmpeg-static`
-- on **windows**, the postinstall drops `yt-dlp.exe` and an ffmpeg binary under `backend/node_modules` — no system path setup needed for the usual case
-- on **linux/macos**, the same packages download platform binaries; if a download is blocked in your environment, install `yt-dlp` and `ffmpeg` via your package manager and ensure they are on `PATH`, or re-run install with network access so `ffmpeg-static` can fetch its binary
-- merged mp4 / mp3 conversion needs ffmpeg present (the static package path is preferred when found)
+**media dependencies (recommended):**
+
+mushnote uses `yt-dlp` and `ffmpeg` for video info, transcripts, audio extraction, and media conversions. newer versions of npm frequently block binary download lifecycle scripts (`allowScripts`). installing native packages via your system package manager is recommended:
+
+```bash
+# windows (winget)
+winget install yt-dlp ffmpeg
+
+# arch linux
+sudo pacman -S yt-dlp ffmpeg
+
+# debian / ubuntu
+sudo apt update && sudo apt install yt-dlp ffmpeg
+
+# macos (homebrew)
+brew install yt-dlp ffmpeg
+```
 
 ## setup
 
 ```bash
 npm --prefix backend install
-npm --prefix backend rebuild
 ```
-
-> [!NOTE]
-> On newer versions of npm (v12+ / Node 26), lifecycle scripts may be blocked by default. Running `npm --prefix backend rebuild` (or `npm install --ignore-scripts=false`) ensures native binaries like `ffmpeg` and `yt-dlp` download properly.
 
 config lives at `vault/system/config.yaml` (copied from `resources/config.example.yaml` on first boot if missing).
 
@@ -160,9 +171,7 @@ restart the server to activate web tools. without bright data, the agent continu
 
 ### 3. youtube (optional, no extra api)
 
-`npm install` in `backend` pulls **yt-dlp** via `youtube-dl-exec` (postinstall downloads `yt-dlp.exe` on windows) and **ffmpeg** via `ffmpeg-static` (platform binary in node_modules, used for mp3 and merged video).
-
-the `youtube_video` tool supports `info`, `transcript`, or `download` (audio mp3 by default, video muxed webm when `media: video`; merged mp4 if `format: mp4`). works when youtube exposes captions and the video is public. no google youtube api billing.
+the `youtube_video` tool supports `info`, `transcript`, or `download` (audio mp3 by default, video muxed webm when `media: video`; merged mp4 if `format: mp4`). works when youtube exposes captions and the video is public. no google youtube api billing. mushnote automatically detects system `yt-dlp` and `ffmpeg` from your PATH, falling back to local npm binaries if present.
 
 ### 4. run
 
@@ -182,19 +191,7 @@ open [http://localhost:3000](http://localhost:3000) on your lan so others can jo
 
 to run mushnote as a background daemon on linux that launches on boot:
 
-1. install system packages:
-
-on linux, newer versions of npm frequently block binary download postinstall scripts. install `yt-dlp` and `ffmpeg` via your system package manager so the agent's youtube and media conversions work out of the box:
-
-```bash
-# arch linux
-sudo pacman -S nodejs npm yt-dlp ffmpeg
-
-# debian / ubuntu
-sudo apt update && sudo apt install nodejs npm yt-dlp ffmpeg
-```
-
-2. create `/etc/systemd/system/mushnote.service`:
+1. create `/etc/systemd/system/mushnote.service`:
 
 ```ini
 [Unit]
@@ -220,14 +217,14 @@ ReadWritePaths=/home/youruser/mushnote
 WantedBy=multi-user.target
 ```
 
-3. enable and start the service:
+2. enable and start the service:
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now mushnote
 ```
 
-4. check logs:
+3. check logs:
 
 ```bash
 journalctl -u mushnote -f
@@ -259,6 +256,23 @@ prompt: |
 ```
 
 create or edit jobs in the vault (or ask the agent to write them with `textfile_create` / `textfile_edit_diff`). the server watches the jobs folder and runs due jobs on its ticker.
+
+## my personal setup
+
+i run mushnote on a small server for me and my partner. our monthly cost is **$0**:
+
+- **free domain**: a free subdomain from [freedns.afraid.org](https://freedns.afraid.org/) (such as `docdb.org`) pointed to our home ip
+- **free https**: **caddy** as a reverse proxy that automatically provisions and renews let's encrypt certificates with zero extra config:
+
+```caddyfile
+ournotes.docdb.org {
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
+- **free ai**: gemini 3.5 flash lite on the google ai studio free tier for daily chat and scheduling
+- **free web and media**: bright data free tier for search, and native yt-dlp and ffmpeg for media
+- **mobile pwa**: installed on our phone home screens as a standalone app, perfect for quickly jotting down notes, checking off groceries, or tracking calories on the go
 
 ## layout
 

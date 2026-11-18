@@ -660,7 +660,6 @@ const tooliconmap = {
   file_move: '/resources/icons/tools/tool-file-move.png',
   file_copy: '/resources/icons/tools/tool-file-copy.png',
   file_delete: '/resources/icons/tools/tool-file-delete.png',
-  folder_delete: '/resources/icons/tools/tool-folder-delete.png',
   archive_extract: '/resources/icons/tools/tool-archive-extract.png',
   download: '/resources/icons/tools/tool-download.png',
   api_request: '/resources/icons/tools/tool-api-request.png',
@@ -790,13 +789,9 @@ export function formattoolmeta(call) {
   }
 
   if (name === 'file_delete') {
-    const filename = args.path || args.file_path || args.note_id || 'file'
-    return { icon, label: `deleted ${filename}`, colorclass: 'tool-badge-delete' }
-  }
-
-  if (name === 'folder_delete') {
-    const foldername = args.folder_path || 'folder'
-    return { icon, label: `deleted folder ${foldername}`, colorclass: 'tool-badge-delete' }
+    const filename = args.path || args.file_path || args.note_id || 'item'
+    const isfolder = args.delete_type === 'folder'
+    return { icon, label: isfolder ? `deleted folder ${filename}` : `deleted ${filename}`, colorclass: 'tool-badge-delete' }
   }
 
   if (name === 'archive_extract') {
@@ -910,11 +905,7 @@ export function formattoolstatustext(call) {
   }
   if (name === 'file_delete') {
     const filename = args.path || args.file_path || args.note_id
-    return filename && filename !== 'file' ? `deleting ${filename}...` : 'deleting file...'
-  }
-  if (name === 'folder_delete') {
-    const foldername = args.folder_path || 'folder'
-    return `deleting folder ${foldername}...`
+    return filename && filename !== 'file' ? `deleting ${filename}...` : 'deleting...'
   }
   if (name === 'archive_extract') {
     const filename = args.path || args.file_path || 'archive'
@@ -1634,35 +1625,32 @@ export async function senduserprompt(text) {
               await opennote(targetfileid, { newtab: true, force: true })
             }
 
-            // close tabs if file was deleted --------------------
+            // close tabs and safely adjust folder view if file or folder was deleted --------------------
             if (call.name === 'file_delete') {
               const delid = call.args?.path || call.args?.file_path || call.args?.note_id
-              if (delid) {
+              const isfolder = call.args?.delete_type === 'folder'
+              if (delid && isfolder) {
+                const delprefix = `${delid}/`
+                const tabsremaining = state.opentabs.filter(t => !t.startsWith(delprefix) && t !== delid)
+                if (tabsremaining.length !== state.opentabs.length) {
+                  state.opentabs = tabsremaining
+                  if (state.activenoteid && (state.activenoteid.startsWith(delprefix) || state.activenoteid === delid)) {
+                    if (tabsremaining.length > 0) {
+                      opennote(tabsremaining[0], { force: true, replacecurrent: false, switchfolder: false })
+                    } else {
+                      closenote()
+                    }
+                  }
+                  rendertabs()
+                  saveworkspacestate()
+                }
+                if (state.currentfolder === delid || state.currentfolder.startsWith(delprefix)) {
+                  const parentparts = delid.split('/').slice(0, -1)
+                  navigatefolder(parentparts.join('/'))
+                }
+              } else if (delid) {
                 closetab(delid)
                 closetab(`preview:${delid}`)
-              }
-            }
-
-            // close tabs and safely adjust folder view if folder was deleted --------------------
-            if (call.name === 'folder_delete' && call.args?.folder_path) {
-              const delfolder = call.args.folder_path
-              const delprefix = `${delfolder}/`
-              const tabsremaining = state.opentabs.filter(t => !t.startsWith(delprefix) && t !== delfolder)
-              if (tabsremaining.length !== state.opentabs.length) {
-                state.opentabs = tabsremaining
-                if (state.activenoteid && (state.activenoteid.startsWith(delprefix) || state.activenoteid === delfolder)) {
-                  if (tabsremaining.length > 0) {
-                    opennote(tabsremaining[0], { force: true, replacecurrent: false, switchfolder: false })
-                  } else {
-                    closenote()
-                  }
-                }
-                rendertabs()
-                saveworkspacestate()
-              }
-              if (state.currentfolder === delfolder || state.currentfolder.startsWith(delprefix)) {
-                const parentparts = delfolder.split('/').slice(0, -1)
-                navigatefolder(parentparts.join('/'))
               }
             }
 
