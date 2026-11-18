@@ -1,7 +1,21 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { generateVAPIDKeys, setVapidDetails, sendNotification } from 'web-push'
 import { log } from './logger.js'
+
+// dynamic webpush loader to avoid crashing if npm install has not run --------------------
+let webpushmod = null
+let webpushchecked = false
+
+async function loadwebpush() {
+  if (webpushchecked) return webpushmod
+  try {
+    webpushmod = await import('web-push')
+  } catch {
+    webpushmod = null
+  }
+  webpushchecked = true
+  return webpushmod
+}
 
 // path helpers for system notification files --------------------
 function getvapidpath(vaultdir) {
@@ -16,9 +30,15 @@ function getsubspath(vaultdir) {
 let vapidinitialized = false
 let cachedpublickey = null
 
-export function initvapid(vaultdir) {
+export async function initvapid(vaultdir) {
   if (vapidinitialized && cachedpublickey) {
     return cachedpublickey
+  }
+
+  const wp = await loadwebpush()
+  if (!wp || !wp.generateVAPIDKeys) {
+    log.warn('push', 'disabled', 'web-push is not installed run npm install in backend')
+    return null
   }
 
   const systemdir = path.join(vaultdir, 'system')
@@ -38,12 +58,12 @@ export function initvapid(vaultdir) {
   }
 
   if (!keys || !keys.publicKey || !keys.privateKey) {
-    keys = generateVAPIDKeys()
+    keys = wp.generateVAPIDKeys()
     fs.writeFileSync(vapidfile, JSON.stringify(keys, null, 2), 'utf8')
     log.server('vapid', 'generate', 'created new push keys')
   }
 
-  setVapidDetails(
+  wp.setVapidDetails(
     'mailto:admin@mushnote.local',
     keys.publicKey,
     keys.privateKey
@@ -54,8 +74,8 @@ export function initvapid(vaultdir) {
   return cachedpublickey
 }
 
-export function getvapidpublickey(vaultdir) {
-  return initvapid(vaultdir)
+export async function getvapidpublickey(vaultdir) {
+  return await initvapid(vaultdir)
 }
 
 // read and write notifications store containing subscriptions and permissions --------------------
@@ -174,7 +194,12 @@ export function getsubscriptions(vaultdir, username = null) {
 
 // send push notification payload to target user or all users --------------------
 export async function sendpushnotification(vaultdir, targetuser, payload) {
-  initvapid(vaultdir)
+  const wp = await loadwebpush()
+  const pubkey = await initvapid(vaultdir)
+  if (!wp || !wp.sendNotification || !pubkey) {
+    return { success: false, sent: 0, total: 0, note: 'web-push is not installed run npm install in backend' }
+  }
+
   const allsubs = readsubscriptions(vaultdir)
   if (!allsubs || allsubs.length === 0) {
     return { success: true, sent: 0, total: 0, note: 'no push subscriptions registered' }
@@ -206,7 +231,7 @@ export async function sendpushnotification(vaultdir, targetuser, payload) {
 
   for (const item of targets) {
     try {
-      await sendNotification(item.subscription, payloadstring)
+      await wp.sendNotification(item.subscription, payloadstring)
       sentcount++
     } catch (err) {
       const statuscode = err?.statusCode
@@ -221,8 +246,9 @@ export async function sendpushnotification(vaultdir, targetuser, payload) {
 
   // prune expired subscriptions if any --------------------
   if (expiredendpoints.length > 0) {
-    const fresh = allsubs.filter(s => !expiredendpoints.includes(s.subscription?.endpoint))
-    writesubscriptions(vaultdir, fresh)
+    const store = readnotificationsstore(vaultdir)
+    store.subscriptions = store.subscriptions.filter(s => !expiredendpoints.includes(s.subscription?.endpoint))
+    writenotificationsstore(vaultdir, store)
     log.server('push', 'prune', `removed ${expiredendpoints.length} expired subscriptions`)
   }
 

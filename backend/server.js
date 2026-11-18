@@ -484,9 +484,9 @@ app.post('/api/user/preferences', (req, res) => {
 })
 
 // notifications public vapid key --------------------
-app.get('/api/notifications/vapid-public-key', (req, res) => {
+app.get('/api/notifications/vapid-public-key', async (req, res) => {
   try {
-    const key = getvapidpublickey(vaultdir)
+    const key = await getvapidpublickey(vaultdir)
     res.json({ public_key: key })
   } catch (err) {
     res.status(500).json({ error: err.message })

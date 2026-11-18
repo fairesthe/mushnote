@@ -1297,10 +1297,10 @@ export async function executetool(name, args, context = {}) {
         replacement_text: sanitizevaultmarkdown(unliteralescapes(args.replacement_text)),
         edits: Array.isArray(args.edits)
           ? args.edits.map(e => ({
-              mode: e.mode,
-              target_text: unliteralescapes(e.target_text),
-              replacement_text: sanitizevaultmarkdown(unliteralescapes(e.replacement_text))
-            }))
+            mode: e.mode,
+            target_text: unliteralescapes(e.target_text),
+            replacement_text: sanitizevaultmarkdown(unliteralescapes(e.replacement_text))
+          }))
           : undefined,
         author: aiusername
       })
@@ -1322,7 +1322,7 @@ export async function executetool(name, args, context = {}) {
     const rawcode = (args.code || '').trim()
     if (!rawcode) return 'error: code is required'
     const timeout = typeof args.timeout_ms === 'number' ? args.timeout_ms : 2000
-    const res = evaluatejavascript(rawcode, timeout)
+    const res = await evaluatejavascript(rawcode, timeout)
     if (!res.success) {
       return `error: ${res.error || 'execution failed'}`
     }
