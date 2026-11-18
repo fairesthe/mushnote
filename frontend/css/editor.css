@@ -406,6 +406,21 @@
   padding: 0;
 }
 
+/* strike through checked task list items -------------------- */
+.tiptap-editor ul[data-type="taskList"] li[data-checked="true"]>div>*:not(ul),
+.tiptap-editor ul[data-type="taskList"] li:has(> label input[type="checkbox"]:checked)>div>*:not(ul) {
+  text-decoration: line-through;
+  text-decoration-color: var(--muted-color);
+  color: var(--muted-color);
+  opacity: 0.7;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.tiptap-editor ul[data-type="taskList"] li[data-checked="true"]>div>*:not(ul) a,
+.tiptap-editor ul[data-type="taskList"] li:has(> label input[type="checkbox"]:checked)>div>*:not(ul) a {
+  color: inherit;
+}
+
 .tiptap-editor blockquote {
   border-left: 3px solid #444444;
   padding-left: 14px;

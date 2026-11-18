@@ -97,6 +97,19 @@
   clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
 }
 
+.msg-bubble.rendered-md li.task-list-item:has(> input[type="checkbox"]:checked) {
+  text-decoration: line-through;
+  text-decoration-color: var(--muted-color);
+  color: var(--muted-color);
+  opacity: 0.7;
+}
+
+.msg-bubble.rendered-md li.task-list-item:has(> input[type="checkbox"]:checked) ul {
+  text-decoration: none;
+  opacity: 1;
+  color: var(--text-color);
+}
+
 .msg-bubble.rendered-md blockquote {
   margin: 0 0 8px 0;
   padding: 4px 10px;
