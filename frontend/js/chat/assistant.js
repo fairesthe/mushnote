@@ -827,11 +827,11 @@ export function formattoolmeta(call) {
   }
 
   if (name === 'eval_js') {
-    const code = String(args.code || '').trim()
+    const code = String(args.code || '').replace(/\s+/g, ' ').trim()
     const snippet = code.length > 28 ? `${code.slice(0, 28)}...` : (code || 'code')
     return {
       icon,
-      label: `evaluated ${snippet}`,
+      label: `evaluated \`${snippet}\``,
       colorclass: 'tool-badge-view'
     }
   }
@@ -1181,7 +1181,21 @@ function buildactivitystatusel(label, toolname = '', done = false) {
   row.appendChild(icon)
   const text = document.createElement('span')
   text.className = 'ai-activity-label'
-  text.textContent = label || 'thinking...'
+  const rawlabel = label || 'thinking...'
+  if (rawlabel.includes('`')) {
+    const parts = rawlabel.split(/(`[^`]+`)/g)
+    for (const part of parts) {
+      if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+        const codeel = document.createElement('code')
+        codeel.textContent = part.slice(1, -1)
+        text.appendChild(codeel)
+      } else if (part) {
+        text.appendChild(document.createTextNode(part))
+      }
+    }
+  } else {
+    text.textContent = rawlabel
+  }
   row.appendChild(text)
   return row
 }

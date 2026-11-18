@@ -455,6 +455,15 @@
   word-break: break-word;
 }
 
+.ai-activity-label code {
+  background-color: #141414;
+  border: 1px solid var(--border-color);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
 .ai-activity-icon,
 .ai-status-icon {
   width: 14px;
