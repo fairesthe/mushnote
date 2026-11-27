@@ -57,7 +57,7 @@ self-host for a **small group** — a couple, roommates, close friends — on on
 | icon | tool | what it does |
 |------|------|--------------|
 | ![file_search](resources/icons/tools/tool-file-search.png) | `file_search` | search vault text by content/title/path, or media by filename/folder/`media_kind`/size; `recent=true` lists recently modified files |
-| ![web_search](resources/icons/tools/tool-web-search.png) | `web_search` | bright data google serp (ai overview when present); `news=true` for google news |
+| ![web_search](resources/icons/tools/tool-web-search.png) | `web_search` | google search via chrome extension background tab (ai overview + organic results) |
 | ![web_read_page](resources/icons/tools/tool-web-read-page.png) | `web_read_page` | fetch one https url to markdown/text |
 | ![youtube_video](resources/icons/tools/tool-youtube-video.png) | `youtube_video` | youtube `info`, `transcript`, or `download` (audio/video) via yt-dlp |
 | ![download](resources/icons/tools/tool-download.png) | `download` | save an http(s) file into the vault, or shallow-clone a public git repo |
@@ -67,7 +67,7 @@ self-host for a **small group** — a couple, roommates, close friends — on on
 | ![archive_extract](resources/icons/tools/tool-archive-extract.png) | `archive_extract` | unpack a vault `.zip`, `.jar`, `.7z`, or `.rar` into a folder next to it |
 | ![textfile_read](resources/icons/tools/tool-textfile-read.png) | `textfile_read` | read a text/code file; optional heading or line slice; `mode=outline` for headings only |
 | ![file_analyze](resources/icons/tools/tool-file-analyze.png) | `file_analyze` | load image/pdf/audio/video into gemini, or `mode=metadata` for size/dates/type |
-| ![file_open_for_user](resources/icons/tools/tool-file-open-for-user.png) | `file_open_for_user` | open a vault file in an editor tab for the user |
+| ![file_open_for_user](resources/icons/tools/tool-file-open-for-user.png) | `tab_manage` | open, focus, or close vault notes and web urls in the `"mushnote"` tab group |
 | ![textfile_create](resources/icons/tools/tool-textfile-create.png) | `textfile_create` | create a new text file |
 | ![textfile_edit_diff](resources/icons/tools/tool-textfile-edit-diff.png) | `textfile_edit_diff` | targeted edits (replace, insert, delete, append; batchable) |
 | ![textfile_history](resources/icons/tools/tool-textfile-history.png) | `textfile_history` | browse edit history: hourly --> chunk --> revision snapshot |
@@ -80,8 +80,8 @@ self-host for a **small group** — a couple, roommates, close friends — on on
 **gemini 3.5 flash lite** (`backend/agent/`)  
 the agent runs a lot of turns: chat, tool calls, big file snippets, history compression. flash lite is built for **high volume at low cost** and still fast enough for day-to-day help. for a few people sharing notes, that matters more than the heaviest reasoning model.
 
-**bright data** (optional `web_search` and `web_read_page`)  
-home-grown scraping of google or random sites means captchas, blocked ips, and brittle html. bright data’s serp api returns **structured google results** (and overview when available); the webview zone fetches pages as markdown. mushnote hardcodes **google full json serp + ai overview** so config stays small.
+**chrome extension** (`chrome-extension/` for `web_search`, `web_read_page`, and `tab_manage`)  
+instead of external scraping proxies, mushnote uses a lightweight chrome extension that runs searches and page reads in background tabs inside the `"mushnote"` tab group using your own browser session, returning clean, token-bounded markdown.
 
 **on disk, not in a proprietary cloud**  
 notes live in `vault/`. you get collaboration and an agent without locking content in someone else’s notebook product.
