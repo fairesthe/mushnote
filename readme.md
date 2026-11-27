@@ -1,6 +1,6 @@
 # mushnote
 
-collaborative markdown notes on disk, real-time multi-user editing, and a built-in gemini agent that can read and edit your vault.
+collaborative markdown notes on disk, real-time multi-user editing, and a built-in gemini agent—running natively in your browser via a lightweight chrome extension (`chrome-extension/`) where each note and ai web search lives in its own `"mushnote"` browser tab (`/editor/<path>`).
 
 self-host for a **small group** — a couple, roommates, close friends — on one machine. not a thousand-user saas.
 
