@@ -469,7 +469,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendresponse) => {
     listmushnotetabs().then((tabs) => {
       for (const t of tabs) {
         if (t.id !== sender?.tab?.id) {
-          chrome.tabs.sendMessage(t.id, { type: 'MUSHNOTE_CONV_SYNC', convId: msg.convId }).catch(() => {})
+          chrome.tabs.sendMessage(t.id, { type: 'MUSHNOTE_CONV_SYNC', convId: msg.convId, force: true }).catch(() => {})
         }
       }
     }).catch(() => {})

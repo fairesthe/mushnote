@@ -12,46 +12,56 @@ function announce() {
 // announce immediately on load --------------------
 announce()
 
+function safesend(payload, cb) {
+  if (!chrome?.runtime?.id) return
+  try {
+    const p = cb ? chrome.runtime.sendMessage(payload, cb) : chrome.runtime.sendMessage(payload)
+    if (p && typeof p.catch === 'function') p.catch(() => {})
+  } catch {}
+}
+
 // respond to page pings and forward fetch requests --------------------
 window.addEventListener('message', (event) => {
-  if (event.source !== window) return
+  if (event.source !== window || !chrome?.runtime?.id) return
   const msg = event.data
   if (!msg || typeof msg !== 'object') return
 
   if (msg.type === 'MUSHNOTE_EXT_PING') {
-    chrome.runtime.sendMessage({ type: 'MUSHNOTE_REGISTER_ORIGIN', origin: window.location.origin }).catch(() => {})
+    safesend({ type: 'MUSHNOTE_REGISTER_ORIGIN', origin: window.location.origin })
     announce()
-    chrome.storage.local.get('pendingAskSelection', ({ pendingAskSelection }) => {
-      if (pendingAskSelection?.text) {
-        chrome.storage.local.remove('pendingAskSelection').catch(() => {})
-        window.postMessage(pendingAskSelection, '*')
-      }
-    })
+    try {
+      chrome.storage.local.get('pendingAskSelection', ({ pendingAskSelection }) => {
+        if (pendingAskSelection?.text) {
+          chrome.storage.local.remove('pendingAskSelection').catch(() => {})
+          window.postMessage(pendingAskSelection, '*')
+        }
+      })
+    } catch {}
     return
   }
 
   if (msg.type === 'MUSHNOTE_AI_NAME' && msg.name) {
-    chrome.runtime.sendMessage({ type: 'MUSHNOTE_SET_AI_NAME', name: msg.name }).catch(() => {})
+    safesend({ type: 'MUSHNOTE_SET_AI_NAME', name: msg.name })
     return
   }
 
   if (msg.type === 'MUSHNOTE_CONV_UPDATED' && msg.convId) {
-    chrome.runtime.sendMessage({ type: 'MUSHNOTE_CONV_UPDATED', convId: msg.convId }).catch(() => {})
+    safesend({ type: 'MUSHNOTE_CONV_UPDATED', convId: msg.convId })
     return
   }
 
   if (msg.type === 'MUSHNOTE_AI_STATE') {
-    chrome.runtime.sendMessage({ type: 'MUSHNOTE_SET_AI_OPEN', open: msg.open }).catch(() => {})
+    safesend({ type: 'MUSHNOTE_SET_AI_OPEN', open: msg.open })
     return
   }
 
   if (msg.type === 'MUSHNOTE_AI_WIDTH' && typeof msg.width === 'number') {
-    chrome.runtime.sendMessage({ type: 'MUSHNOTE_SET_AI_WIDTH', width: msg.width }).catch(() => {})
+    safesend({ type: 'MUSHNOTE_SET_AI_WIDTH', width: msg.width })
     return
   }
 
   if (msg.type === 'MUSHNOTE_FETCH_PAGE' && (msg.url || msg.tabId)) {
-    chrome.runtime.sendMessage(
+    safesend(
       { type: 'MUSHNOTE_FETCH_PAGE', url: msg.url, tabId: msg.tabId, keepOpen: msg.keepOpen, active: msg.active },
       (res) => {
         window.postMessage({
@@ -65,7 +75,7 @@ window.addEventListener('message', (event) => {
   }
 
   if (msg.type === 'MUSHNOTE_LIST_TABS') {
-    chrome.runtime.sendMessage({ type: 'MUSHNOTE_LIST_TABS' }, (res) => {
+    safesend({ type: 'MUSHNOTE_LIST_TABS' }, (res) => {
       window.postMessage({
         type: 'MUSHNOTE_LIST_TABS_RESULT',
         requestId: msg.requestId,
@@ -76,7 +86,7 @@ window.addEventListener('message', (event) => {
   }
 
   if (msg.type === 'MUSHNOTE_OPEN_TAB') {
-    chrome.runtime.sendMessage({ type: 'MUSHNOTE_OPEN_TAB', tabId: msg.tabId, url: msg.url, active: msg.active }, (res) => {
+    safesend({ type: 'MUSHNOTE_OPEN_TAB', tabId: msg.tabId, url: msg.url, active: msg.active }, (res) => {
       window.postMessage({
         type: 'MUSHNOTE_OPEN_TAB_RESULT',
         requestId: msg.requestId,
@@ -87,7 +97,7 @@ window.addEventListener('message', (event) => {
   }
 
   if (msg.type === 'MUSHNOTE_CLOSE_TAB') {
-    chrome.runtime.sendMessage({ type: 'MUSHNOTE_CLOSE_TAB', tabId: msg.tabId }, (res) => {
+    safesend({ type: 'MUSHNOTE_CLOSE_TAB', tabId: msg.tabId }, (res) => {
       window.postMessage({
         type: 'MUSHNOTE_CLOSE_TAB_RESULT',
         requestId: msg.requestId,

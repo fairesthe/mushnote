@@ -309,6 +309,7 @@ export async function initconversationstorage() {
 window.addEventListener('message', (e) => {
   if (e.source !== window || e.data?.type !== 'MUSHNOTE_CONV_SYNC' || !e.data.convId) return
   if (isagentchatbusy()) return
+  if (e.data.convId === activeconversationid && !e.data.force) return
   loadconversationbyid(e.data.convId).then(() => {
     renderconversationslist()
   }).catch(() => {})
