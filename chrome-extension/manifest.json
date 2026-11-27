@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "mushnote",
+  "version": "0.1.0",
+  "description": "mushnote browser extension for background tab research, tab grouping, and inbox integration",
+  "permissions": [
+    "tabs",
+    "tabGroups",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "icons": {
+    "128": "icon.png"
+  },
+  "action": {
+    "default_icon": "icon.png",
+    "default_title": "mushnote"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "https://*/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

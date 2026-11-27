@@ -3,7 +3,8 @@
 const mushnotecore = `How mushnote works:
 - vault files on disk (.md, .txt, code, yaml, etc.) with versioned history
 - collaborative editor: tabs, ==highlight==, latex, gfm tables, note links ([label](path.md) or [[path]])
-- you edit via tools; changes stream live with your avatar`
+- you edit via tools; changes stream live with your avatar
+- for questions about how mushnote works, its extension, or setup, read \`!special/mushnote-info.md\``
 
 function jobssection(userid) {
   const user = userid || '<userid>'

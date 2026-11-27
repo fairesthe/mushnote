@@ -1,6 +1,7 @@
 import http from 'node:http'
 import path from 'node:path'
 import fs from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import express from 'express'
 import { WebSocketServer } from 'ws'
 import { loadconfig, saveconfig, getvaultpath, gethistorypath, getrootdir } from './core/config.js'
@@ -126,6 +127,10 @@ app.get('/login', (req, res) => {
 })
 
 app.get('/editor', (req, res) => {
+  res.sendFile(path.join(frontenddir, 'editor.html'))
+})
+
+app.get('/editor/*', (req, res) => {
   res.sendFile(path.join(frontenddir, 'editor.html'))
 })
 
@@ -1135,6 +1140,26 @@ function parseclientinfo(req) {
   return `${os}, ${device}, ${browser}`
 }
 
+// pending browser extension fetch requests --------------------
+const pendingbrowserfetches = new Map()
+let browserfetchseq = 0
+
+app.post('/api/agent/browser-result', (req, res) => {
+  const { requestId, ok, data, error } = req.body || {}
+  const entry = pendingbrowserfetches.get(requestId)
+  if (!entry) {
+    return res.status(404).json({ error: 'request not found or timed out' })
+  }
+  pendingbrowserfetches.delete(requestId)
+  clearTimeout(entry.timer)
+  if (ok) {
+    entry.resolve(data)
+  } else {
+    entry.reject(new Error(error || 'browser fetch failed'))
+  }
+  res.json({ ok: true })
+})
+
 // gemini agent chat endpoint --------------------
 app.post('/api/agent/chat', async (req, res) => {
   const token = extracttoken(req)
@@ -1288,6 +1313,17 @@ app.post('/api/agent/chat', async (req, res) => {
       history,
       attachments,
       client_info: clientinfo,
+      requestbrowserfetch: (url, timeoutms = 25000) => {
+        const requestId = `bf_${++browserfetchseq}_${Date.now()}`
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            pendingbrowserfetches.delete(requestId)
+            reject(new Error('browser fetch timed out (is the mushnote extension installed?)'))
+          }, timeoutms)
+          pendingbrowserfetches.set(requestId, { resolve, reject, timer })
+          sendevent('browser_fetch', { requestId, url })
+        })
+      },
       onProgress: (event, data) => {
         if (event === 'chunk') {
           handlechunk(data.text)
@@ -1378,6 +1414,16 @@ wss.on('connection', (ws, request) => {
 
   handlesocket(ws, vaultdir, historydir, noteid, author)
 })
+
+// verify required media binaries are installed --------------------
+for (const [bin, arg] of [['yt-dlp', '--version'], ['ffmpeg', '-version']]) {
+  try {
+    execFileSync(bin, [arg], { stdio: 'ignore' })
+  } catch {
+    console.error(`error: required dependency "${bin}" is not installed or not on PATH`)
+    process.exit(1)
+  }
+}
 
 // start http and websocket server --------------------
 server.listen(port, host, () => {

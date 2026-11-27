@@ -17,10 +17,21 @@ function aidrawerstoragekey() {
   return `mushnote_ai_open_${userid}`
 }
 
+function sidebarstoragekey() {
+  const userid = state.currentuser?.id || 'anon'
+  return `mushnote_sidebar_open_${userid}`
+}
+
 function saveaidraweropen() {
   if (!aidrawer) return
   const open = !aidrawer.classList.contains('is-collapsed')
   localStorage.setItem(aidrawerstoragekey(), open ? '1' : '0')
+}
+
+function savesidebaropen() {
+  if (!sidebarpane) return
+  const open = !sidebarpane.classList.contains('is-collapsed')
+  localStorage.setItem(sidebarstoragekey(), open ? '1' : '0')
 }
 
 function restoreaidraweropen() {
@@ -28,6 +39,13 @@ function restoreaidraweropen() {
   const saved = localStorage.getItem(aidrawerstoragekey())
   if (saved === null) return
   aidrawer.classList.toggle('is-collapsed', saved !== '1')
+}
+
+function restoresidebaropen() {
+  if (!sidebarpane) return
+  const saved = localStorage.getItem(sidebarstoragekey())
+  if (saved === null) return
+  sidebarpane.classList.toggle('is-collapsed', saved !== '1')
 }
 
 function syncaiinputsize() {
@@ -137,13 +155,29 @@ export function initlayout() {
     return
   }
 
+  restoresidebaropen()
   restoreaidraweropen()
   updatetogglebuttons()
+
+  // sync sidebar and ai drawer state across open tabs --------------------
+  window.addEventListener('storage', (e) => {
+    if (e.key === sidebarstoragekey() && sidebarpane) {
+      sidebarpane.classList.toggle('is-collapsed', e.newValue !== '1')
+      updatetogglebuttons()
+    } else if (e.key === aidrawerstoragekey() && aidrawer) {
+      aidrawer.classList.toggle('is-collapsed', e.newValue !== '1')
+      updatetogglebuttons()
+      if (!aidrawer.classList.contains('is-collapsed')) {
+        syncaiinputsize()
+      }
+    }
+  })
 
   if (tabtogglefiles && sidebarpane) {
     tabtogglefiles.addEventListener('click', () => {
       sidebarpane.classList.toggle('is-collapsed')
       updatetogglebuttons()
+      savesidebaropen()
     })
   }
 

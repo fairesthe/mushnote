@@ -1681,11 +1681,8 @@ export async function loadnotes() {
           closenote()
         }
       } else {
-        const lastopen = state.currentuser?.preferences?.['last-open-note']
-        const lastopenexists = lastopen && state.allnotes.some(n => isnoteidmatch(n.note_id, lastopen))
-
-        if (lastopenexists) {
-          await opennote(lastopen, { switchfolder: true })
+        closenote()
+      }
         } else {
           closenote()
         }

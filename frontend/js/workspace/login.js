@@ -1,6 +1,6 @@
 import { api } from '../core/api.js'
 import { initspellcheckdisabled } from '../core/spellcheck.js'
-import { pickworkspacepath, initmobilekeyboard } from '../core/mobile.js'
+import { pickworkspacepath, initmobilekeyboard, ismobiledevice } from '../core/mobile.js'
 
 initspellcheckdisabled()
 initmobilekeyboard()
@@ -199,6 +199,7 @@ if (passwordform) {
 // boot login screen --------------------
 checkauth()
 initpwainstall()
+initextensioncheck()
 
 // dismiss loading screen once login screen elements populate --------------------
 window.addEventListener('load', () => {
@@ -218,7 +219,7 @@ function dismissloadingscreen() {
 
 // pwa install banner and instructions sheet --------------------
 function initpwainstall() {
-  const ismobile = window.innerWidth <= 768 || /iphone|ipad|ipod|android/i.test(navigator.userAgent || '')
+  const ismobile = ismobiledevice()
   const isstandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
   if (!ismobile || isstandalone) return
 
@@ -318,4 +319,36 @@ function initpwainstall() {
 
   backdrop?.addEventListener('click', closesheet)
   sheetsclose?.addEventListener('click', closesheet)
+}
+
+// desktop extension install prompt --------------------
+function initextensioncheck() {
+  if (ismobiledevice()) return
+
+  const banner = document.getElementById('ext-install-banner')
+  const btnclose = document.getElementById('btn-ext-banner-close')
+  if (!banner || !btnclose) return
+
+  let detected = false
+
+  function onmessage(e) {
+    if (e.source === window && e.data?.type === 'MUSHNOTE_EXT_READY') {
+      detected = true
+      banner.classList.add('hidden')
+      window.removeEventListener('message', onmessage)
+    }
+  }
+
+  window.addEventListener('message', onmessage)
+  window.postMessage({ type: 'MUSHNOTE_EXT_PING' }, '*')
+
+  setTimeout(() => {
+    if (!detected) {
+      banner.classList.remove('hidden')
+    }
+  }, 250)
+
+  btnclose.addEventListener('click', () => {
+    banner.classList.add('hidden')
+  })
 }

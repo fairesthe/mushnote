@@ -14,14 +14,6 @@ gemini:
   api_key: "key-here"
   ai-username: ai
 
-# bright data (optional agent web tools)
-# serp uses google full json and ai overview in code
-brightdata:
-  api_key: "your-bright-data-api-key"
-  serp_zone: "your_serp_zone"
-  webview_zone: "your_webview_zone"
-  country: us
-
 location:
   city: "Detroit, MI"
   units: imperial

@@ -530,6 +530,7 @@ export async function runagentchat(prompt, options = {}) {
         ainame,
         aiusername: aiconf.username || aiconf.id || 'ai',
         config: conf,
+        requestbrowserfetch: options.requestbrowserfetch,
       })
 
       toolcallsexecuted.push({
@@ -613,6 +614,7 @@ export async function runagentchat(prompt, options = {}) {
               ainame,
               aiusername: aiconf.username || aiconf.id || 'ai',
               config: conf,
+              requestbrowserfetch: options.requestbrowserfetch,
             })
             toolcallsexecuted.push({
               name: call.name,

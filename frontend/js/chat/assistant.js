@@ -1,5 +1,6 @@
 import { api, resolveaccent } from '../core/api.js'
 import { ismobilemode } from '../core/mobile.js'
+import { isextensionconnected, listmushnotetabs, openmushnotetab, closemushnotetab } from '../core/extension.js'
 import { state } from '../core/state.js'
 import { loadnotes, navigatefolder, clearalldraghighlights, getfileicon } from '../workspace/files.js'
 import {
@@ -1414,11 +1415,15 @@ export async function senduserprompt(text) {
       headers['Authorization'] = `Bearer ${token}`
     }
 
+    const opentabs = isextensionconnected()
+      ? await listmushnotetabs().catch(() => state.opentabs)
+      : state.opentabs
+
     const chatbody = JSON.stringify({
       message: prompt,
       attachments: attached.map(mapattachmentforapi),
       active_note_id: state.activenoteid,
-      open_tabs: state.opentabs,
+      open_tabs: opentabs,
       history: aichathistory,
       notification_permission: ('Notification' in window) ? Notification.permission : undefined
     })
@@ -1551,6 +1556,24 @@ export async function senduserprompt(text) {
               }
               rawreplytext = parsed.full || (rawreplytext + (parsed.delta || ''))
               renderbufferedreply(rawreplytext)
+            } else if (eventname === 'browser_fetch') {
+              const { requestId, url } = data || {}
+              if (requestId && url) {
+                fetchpageviaextension(url)
+                  .then((result) => fetch('/api/agent/browser-result', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ requestId, ok: true, data: result })
+                  }))
+                  .catch((err) => fetch('/api/agent/browser-result', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ requestId, ok: false, error: err?.message || 'extension fetch failed' })
+                  }))
+                  .catch(() => {})
+              }
             } else if (eventname === 'tool_call') {
               toolscollected.push(parsed)
               if (agentmsg) {
@@ -1616,8 +1639,18 @@ export async function senduserprompt(text) {
           // if ai generated a new file or opened a file for user open it in a new tab --------------------
           for (const call of finaltools) {
             const isnewfile = call.name === 'textfile_create'
-            const isuseropen = call.name === 'file_open_for_user'
+            const isuseropen = (call.name === 'tab_manage' && String(call.args?.action || 'open').toLowerCase() === 'open')
               || (call.name === 'textfile_read' && call.args?.open_in_tab)
+            if (call.name === 'tab_manage' && isextensionconnected()) {
+              const act = String(call.args?.action || 'open').toLowerCase()
+              if (act === 'focus' && call.args?.tab_id) {
+                openmushnotetab({ tabId: call.args.tab_id, active: true }).catch(() => {})
+              } else if (act === 'close' && call.args?.tab_id) {
+                closemushnotetab(call.args.tab_id).catch(() => {})
+              } else if (act === 'open' && call.args?.url) {
+                openmushnotetab({ url: call.args.url, active: true }).catch(() => {})
+              }
+            }
             let targetfileid = call.args?.path || call.args?.file_path || call.args?.note_id
             if (call.name === 'youtube_video' && String(call.args?.action || '').toLowerCase() === 'download') {
               try {

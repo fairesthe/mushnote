@@ -93,13 +93,11 @@ prices checked **2026-11-15**. vendors change these — verify on the linked pag
 | piece | free tier (what i use) | paid rate if you outgrow free | mushnote note |
 |-------|------------------------|-------------------------------|---------------|
 | **gemini 3.5 flash lite** ([pricing](https://ai.google.dev/gemini-api/docs/pricing)) | free input and output on the free tier in [ai studio](https://aistudio.google.com/) | **$0.30 / 1M** input, **$2.50 / 1M** output | default agent model; high-volume chat + tools |
-| **bright data serp** ([serp api](https://brightdata.com/products/serp-api)) | **5K records / month**, no card required to start | paid plans after free allotment | about one record per `web_search`; page reads use the webview zone |
+| **chrome extension** (`chrome-extension/`) | **$0** (local) | — | powers `web_search`, `web_read_page`, and `"mushnote"` tab grouping using your browser session |
 | **youtube / yt-dlp + ffmpeg** | bundled via npm (`youtube-dl-exec`, `ffmpeg-static`) | — | no youtube data api key |
 | **mushnote itself** | **$0** (mit) | — | host on your pc or a small vps |
 
-**what i actually pay right now:** **$0 / month** — gemini free tier for the agent, bright data’s free serp allotment for occasional search, and local yt-dlp/ffmpeg for downloads. a couple of light daily users fits that envelope. if you blow past free quotas, flash lite paid rates above are still cheap compared with bigger models.
-
-without bright data keys, everything else still works — web tools return “not configured.”
+**what i actually pay right now:** **$0 / month** — gemini free tier for the agent, the local chrome extension for web search and page reading, and local yt-dlp/ffmpeg for downloads. a couple of light daily users fits that envelope. if you blow past free quotas, flash lite paid rates above are still cheap compared with bigger models.
 
 ## requirements
 
@@ -107,9 +105,9 @@ without bright data keys, everything else still works — web tools return “no
 - **os:** windows, macos, or linux
 - **disk:** a writable `vault/` and `history/` path (defaults next to the repo)
 
-**media dependencies (recommended):**
+**media dependencies (required):**
 
-mushnote uses `yt-dlp` and `ffmpeg` for video info, transcripts, audio extraction, and media conversions. newer versions of npm frequently block binary download lifecycle scripts (`allowScripts`). installing native packages via your system package manager is recommended:
+mushnote requires `yt-dlp` and `ffmpeg` on your `PATH` for video info, transcripts, audio extraction, and media conversions (the server will not start if either is missing):
 
 ```bash
 # windows (winget)
@@ -146,30 +144,14 @@ gemini:
 
 3. add human users under `users:` (see example). first admin can manage accounts in-app.
 
-### 2. bright data (optional web)
+### 2. chrome extension (required on desktop)
 
-sign up at [bright data](https://brightdata.com/) to grant the agent live google search and web page reading abilities.
+mushnote uses a lightweight chrome extension (`chrome-extension/`) for desktop access, `"mushnote"` tab grouping, and live web search / page reading (`web_search`, `web_read_page`, `tab_manage`) using your own browser session.
 
-in your bright data control panel, create two zones:
-1. **serp zone** (for `web_search`)
-   - type: **serp api**
-   - format: **google full json**
-   - name: e.g. `mushnote_serp`
-2. **webview zone** (for `web_read_page`)
-   - type: **scraping browser** or **web unlocker**
-   - name: e.g. `mushnote_webview`
-
-copy your api key from settings, and add both to `vault/system/config.yaml`:
-
-```yaml
-brightdata:
-  api_key: "your-bright-data-api-key"
-  serp_zone: mushnote_serp
-  webview_zone: mushnote_webview
-  country: us
-```
-
-restart the server to activate web tools. without bright data, the agent continues operating normally on vault notes.
+1. open `chrome://extensions` in chrome (or edge/brave).
+2. enable **developer mode** (top right).
+3. click **load unpacked** and select the `chrome-extension/` folder from this repo.
+4. visit your mushnote url once and log in—the extension will remember your origin automatically so clicking the toolbar icon toggles/focuses mushnote.
 
 ### 3. youtube (optional, no extra api)
 

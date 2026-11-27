@@ -1,6 +1,7 @@
 import { api, applytheme, resolveaccent } from './api.js'
 import { state } from './state.js'
-import { applymobileboot } from './mobile.js'
+import { applymobileboot, ismobilemode } from './mobile.js'
+import { isextensionconnected } from './extension.js'
 import { initfiles, loadnotes, closecontextmenu } from '../workspace/files.js'
 import { initassistant, loadaiinfo } from '../chat/assistant.js'
 import { initconversationstorage } from '../chat/conversations.js'
@@ -98,6 +99,14 @@ const sidebaruserbox = document.getElementById('sidebar-user-box')
 
 // boot check active user session --------------------
 async function boot() {
+  if (!ismobilemode() && !isextensionconnected()) {
+    await new Promise(r => setTimeout(r, 300))
+    if (!isextensionconnected()) {
+      window.location.replace('/')
+      return
+    }
+  }
+
   let res
   try {
     res = await api('/api/auth/me')
@@ -135,6 +144,13 @@ async function boot() {
 
     loadaiinfo()
     await loadnotes()
+
+    // open note from /editor/<path> url if present --------------------
+    const match = window.location.pathname.match(/^\/editor\/(.+)$/)
+    if (match && match[1]) {
+      const targetid = decodeURIComponent(match[1])
+      await opennote(targetid, { replacecurrent: true })
+    }
   } catch (err) {
     console.error('ui initialization error', err)
   } finally {

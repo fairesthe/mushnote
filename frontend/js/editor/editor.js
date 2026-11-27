@@ -241,6 +241,12 @@ export async function opennote(noteid, options = {}) {
   if (mobile) {
     newtab = false
     replacecurrent = true
+  } else if (newtab && !ispreview) {
+    // open in a new browser tab on desktop --------------------
+    window.open(`/editor/${encodeURI(noteid)}`, '_blank')
+    return
+  } else if (!ispreview) {
+    window.history.replaceState({}, '', `/editor/${encodeURI(noteid)}`)
   }
 
   const prevactive = state.activenoteid

@@ -14,8 +14,16 @@ export function workspacepathformobile(mobile) {
   return mobile ? '/mobile' : '/editor'
 }
 
-export function pickworkspacepath(width = window.innerWidth) {
-  return workspacepathformobile(width <= MOBILE_BREAKPOINT)
+export function ismobiledevice() {
+  if (navigator.userAgentData?.mobile === true) return true
+  const ua = navigator.userAgent || ''
+  if (/iphone|ipad|ipod|android|mobile|windows phone/i.test(ua)) return true
+  if (window.matchMedia?.('(pointer: coarse)').matches && window.innerWidth <= MOBILE_BREAKPOINT) return true
+  return false
+}
+
+export function pickworkspacepath() {
+  return workspacepathformobile(ismobiledevice())
 }
 
 export function currentworkspacepath() {

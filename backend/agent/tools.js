@@ -4,7 +4,6 @@ import { listnotes, readnote, writenote, movenoteorfolder, copynoteorfolder, del
 import { gethourlytimeline, getfiletimeline, getrevisionbyid, formatlinediff, describechangestat } from '../vault/history.js'
 import { getdoc, getdocifloaded, applydiff, migratedocentry, unliteralescapes, streaminsert, evictnotedoc, evictfolderdocs } from '../sync/sync.js'
 import { log } from '../core/logger.js'
-import { brightdatawebsearch, brightdatawebread, getbrightdataconfig } from '../integrations/brightdata.js'
 import {
   fetchvideodetails,
   fetchtranscript,
@@ -176,14 +175,17 @@ export const tooldeclarations = [
     }
   },
   {
-    name: 'file_open_for_user',
-    description: 'Open an existing file in a new tab in the editor for the user. Call this whenever the user asks to open, view, or pull up a file in their workspace.',
+    name: 'tab_manage',
+    description: 'Open, focus, or close tabs in the Mushnote workspace tab group (both vault files and web URLs).',
     parameters: {
       type: 'OBJECT',
       properties: {
-        path: { type: 'STRING', description: 'Target file path (e.g. todo.md, recipes/soup.md, data.json)' }
+        action: { type: 'STRING', description: 'Action to perform: open, focus, or close' },
+        path: { type: 'STRING', description: 'Vault file path for action=open (e.g. todo.md, recipes/soup.md)' },
+        url: { type: 'STRING', description: 'Web URL for action=open' },
+        tab_id: { type: 'NUMBER', description: 'Browser tab ID for action=focus or action=close (from open tabs context)' }
       },
-      required: ['path']
+      required: ['action']
     }
   },
   {
@@ -687,27 +689,16 @@ export async function executetool(name, args, context = {}) {
   if (name === 'web_search') {
     const query = (args.query || '').trim()
     if (!query) return 'error: query required'
-
-    const cfg = config || {}
-    if (!getbrightdataconfig(cfg).serpenabled) {
-      return 'error: web search is not configured. tell the user clearly that web search is currently disabled because brightdata (api_key and serp_zone) is not configured in config.yaml, then proceed using your own internal knowledge or vault files'
+    if (typeof context?.requestbrowserfetch !== 'function') {
+      return 'error: web search requires an active browser extension session'
     }
-
     try {
-      const limit = Math.min(args.limit || 10, 20)
-      const page = Math.min(Math.max(args.page || 1, 1), 10)
-      const news = args.news === true || args.news === 'true' || args.news === 1 || args.news === '1'
-      const payload = await brightdatawebsearch(cfg, query, { limit, page, news })
-      if (!payload.results || payload.results.length === 0) {
-        return JSON.stringify({
-          ...payload,
-          results: [],
-          message: news ? 'no news results' : 'no organic results'
-        })
-      }
+      const searchurl = `https://www.google.com/search?q=${encodeURIComponent(query)}`
+      const payload = await context.requestbrowserfetch(searchurl)
       return JSON.stringify(payload)
     } catch (err) {
-      log.agent('web_search', 'error', String(err.message || err))
+      return `error: web search failed (${err.message || err})`
+    }
       return `error: web search failed (${err.message || err})`
     }
   }
@@ -800,21 +791,13 @@ export async function executetool(name, args, context = {}) {
   if (name === 'web_read_page') {
     const url = (args.url || '').trim()
     if (!url) return 'error: url required'
-
-    const cfg = config || {}
-    if (!getbrightdataconfig(cfg).webreadenabled) {
-      return 'error: web page reading is not configured. tell the user clearly that reading live web pages is currently disabled because brightdata.webview_zone is not configured in config.yaml'
+    if (typeof context?.requestbrowserfetch !== 'function') {
+      return 'error: web page reading requires an active browser extension session'
     }
-
     try {
-      const maxchars = Math.min(args.max_chars || 28000, 50000)
-      const payload = await brightdatawebread(cfg, url, { max_chars: maxchars })
-      if (!payload.content) {
-        return JSON.stringify({ ...payload, content: '', message: 'empty page body' })
-      }
+      const payload = await context.requestbrowserfetch(url)
       return JSON.stringify(payload)
     } catch (err) {
-      log.agent('web_read_page', 'error', String(err.message || err))
       return `error: web read failed (${err.message || err})`
     }
   }
@@ -937,6 +920,11 @@ export async function executetool(name, args, context = {}) {
   // read text or code files (content or outline) --------------------
   if (name === 'textfile_read') {
     const rawtarget = args.path || args.file_path || args.note_id || ''
+    if (String(rawtarget).replace(/^\/+/, '') === '!special/mushnote-info.md') {
+      const infopath = path.join(path.dirname(vaultdir), 'resources', 'mushnote-info.md')
+      if (!fs.existsSync(infopath)) return 'error: mushnote-info.md not found'
+      return JSON.stringify({ path: '!special/mushnote-info.md', content: fs.readFileSync(infopath, 'utf8') })
+    }
     const finalid = resolvefilepath(vaultdir, rawtarget)
     const note = noteforagent(vaultdir, finalid)
     if (!note) {
@@ -1025,15 +1013,25 @@ export async function executetool(name, args, context = {}) {
     return loadmediaforanalyze(vaultdir, finalid)
   }
 
-  // open file in new tab for user --------------------
-  if (name === 'file_open_for_user') {
+  // manage tabs in mushnote workspace --------------------
+  if (name === 'tab_manage') {
+    const action = String(args.action || 'open').toLowerCase()
+    if (action === 'focus' && args.tab_id) {
+      return `success: focused tab ${args.tab_id}`
+    }
+    if (action === 'close' && args.tab_id) {
+      return `success: closed tab ${args.tab_id}`
+    }
+    if (action === 'open' && args.url) {
+      return `success: opened "${args.url}" in a new tab for the user`
+    }
     const rawtarget = args.path || args.file_path || args.note_id || ''
+    if (!rawtarget) return 'error: path, url, or tab_id required'
     const finalid = resolvefilepath(vaultdir, rawtarget)
     const note = readnote(vaultdir, finalid)
     if (!note) {
       return `error: file "${rawtarget}" not found`
     }
-    // check system access permissions for non-admin --------------------
     if (finalid.startsWith('system/')) {
       const parts = finalid.split('/')
       const folderuser = parts[1]
