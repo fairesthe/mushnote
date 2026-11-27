@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
   <meta name="theme-color" content="#000000">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -42,6 +43,29 @@
       object-fit: cover;
       user-select: none;
       -webkit-user-select: none;
+    }
+    body.ai-panel-only #sidebar-pane,
+    body.ai-panel-only .editor-pane,
+    body.ai-panel-only #resizer-left,
+    body.ai-panel-only #resizer-right,
+    body.ai-panel-only #btn-close-ai {
+      display: none !important;
+    }
+    body.ai-panel-only #ai-drawer,
+    body.ai-panel-only #ai-drawer.is-collapsed {
+      display: flex !important;
+      width: 100% !important;
+      min-width: 100% !important;
+      max-width: none !important;
+      opacity: 1 !important;
+      pointer-events: auto !important;
+      visibility: visible !important;
+      flex: 1 1 auto !important;
+      border-left: none !important;
+    }
+    body.ai-panel-only #ai-drawer > * {
+      width: 100% !important;
+      min-width: 0 !important;
     }
   </style>
   <!-- order matters, later files win ties -------------------- -->

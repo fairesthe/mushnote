@@ -81,14 +81,14 @@ export const tooldeclarations = [
   },
   {
     name: 'web_read_page',
-    description: 'Fetch one https url to markdown or text. Returns content, source_tag, reply_hint.',
+    description: 'Fetch an https url or read an already-open tab by tab_id to markdown (can be called in parallel for multiple links). Returns content, url, title, icon.',
     parameters: {
       type: 'OBJECT',
       properties: {
         url: { type: 'STRING', description: 'Full https URL of the article or page to read' },
+        tab_id: { type: 'NUMBER', description: 'Optional browser tab ID from open tabs context to read directly' },
         max_chars: { type: 'INTEGER', description: 'Max characters to return (default 28000, max 50000)' }
-      },
-      required: ['url']
+      }
     }
   },
   {
@@ -176,14 +176,14 @@ export const tooldeclarations = [
   },
   {
     name: 'tab_manage',
-    description: 'Open, focus, or close tabs in the Mushnote workspace tab group (both vault files and web URLs).',
+    description: 'Open, navigate, focus, or close tabs in the Mushnote workspace tab group (both vault files and web URLs).',
     parameters: {
       type: 'OBJECT',
       properties: {
-        action: { type: 'STRING', description: 'Action to perform: open, focus, or close' },
-        path: { type: 'STRING', description: 'Vault file path for action=open (e.g. todo.md, recipes/soup.md)' },
-        url: { type: 'STRING', description: 'Web URL for action=open' },
-        tab_id: { type: 'NUMBER', description: 'Browser tab ID for action=focus or action=close (from open tabs context)' }
+        action: { type: 'STRING', description: 'Action to perform: open, navigate, focus, or close' },
+        path: { type: 'STRING', description: 'Vault file path for action=open or action=navigate (e.g. todo.md, recipes/soup.md)' },
+        url: { type: 'STRING', description: 'Web URL for action=open or action=navigate' },
+        tab_id: { type: 'NUMBER', description: 'Browser tab ID for action=navigate, action=focus, or action=close (from open tabs context)' }
       },
       required: ['action']
     }
@@ -699,8 +699,6 @@ export async function executetool(name, args, context = {}) {
     } catch (err) {
       return `error: web search failed (${err.message || err})`
     }
-      return `error: web search failed (${err.message || err})`
-    }
   }
 
   if (name === 'youtube_video') {
@@ -790,12 +788,13 @@ export async function executetool(name, args, context = {}) {
 
   if (name === 'web_read_page') {
     const url = (args.url || '').trim()
-    if (!url) return 'error: url required'
+    const tabId = args.tab_id || null
+    if (!url && !tabId) return 'error: url or tab_id required'
     if (typeof context?.requestbrowserfetch !== 'function') {
       return 'error: web page reading requires an active browser extension session'
     }
     try {
-      const payload = await context.requestbrowserfetch(url)
+      const payload = await context.requestbrowserfetch(url || null, { tabId })
       return JSON.stringify(payload)
     } catch (err) {
       return `error: web read failed (${err.message || err})`
@@ -1021,6 +1020,12 @@ export async function executetool(name, args, context = {}) {
     }
     if (action === 'close' && args.tab_id) {
       return `success: closed tab ${args.tab_id}`
+    }
+    if (action === 'navigate') {
+      if (!args.tab_id) return 'error: tab_id required for navigate'
+      if (args.url) {
+        return `success: navigated tab ${args.tab_id} to "${args.url}"`
+      }
     }
     if (action === 'open' && args.url) {
       return `success: opened "${args.url}" in a new tab for the user`

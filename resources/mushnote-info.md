@@ -4,6 +4,10 @@ Mushnote is a collaborative, local-first markdown workspace with real-time multi
 
 ## UI & Workspace Layout
 - **Left Sidebar (Files):** Browse folders and files in `vault/`, create/rename/move/delete notes, and drag files into the editor or AI chat.
+- **Basic UI Tasks:**
+  - **Create a new note or folder:** Click the `...` (more) button in the files sidebar quick bar (or right-click anywhere in the files list) and choose **new note** or **new folder**, or ask the AI to create one.
+  - **Open, rename, move, copy, or delete:** Click a note to open it in the current tab, or right-click any file/folder (or use its `...` menu) for **open in new tab**, **rename**, **move**, **copy**, **download**, or **delete**.
+  - **View edit history:** Use the history button in the editor toolbar to browse hourly snapshots and restore revisions.
 - **Center Editor:** WYSIWYG markdown and code editor supporting tasks, GFM tables, `==highlights==`, LaTeX math (`$...$` / `$$...$$`), images, note links (`[label](path.md)` or `[[path]]`), and per-file edit history.
 - **Right Drawer (AI Assistant):** Streaming chat with tool badges, file/selection attachments, and live edits to vault notes.
 - **Synced Columns:** Both the left files sidebar and right AI drawer persist their open/collapsed state in `localStorage` and sync across all open Mushnote tabs.

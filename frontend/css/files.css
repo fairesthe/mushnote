@@ -711,10 +711,6 @@
 
 .folder-quick-more {
   margin-left: auto;
-  display: none;
-}
-
-body.is-mobile .folder-quick-more {
   display: inline-flex;
 }
 

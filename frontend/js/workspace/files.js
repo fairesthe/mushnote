@@ -739,13 +739,6 @@ export function renderfolderview() {
 
     folderitems.appendChild(row)
   }
-
-  if (!state.currentfolder && !ismobilemode()) {
-    const hint = document.createElement('div')
-    hint.className = 'folder-hint'
-    hint.textContent = '(right click for more)'
-    folderitems.appendChild(hint)
-  }
 }
 
 // update active highlight on visible file rows without changing folder --------------------
@@ -1381,11 +1374,9 @@ export function initfiles() {
     ctxitemopentab.addEventListener('click', () => {
       if (!contexttargetnoteid) return
       const target = contexttargetnoteid
-      const alreadyopen = state.opentabs.some((t) => isnoteidmatch(t, target))
       closecontextmenu()
-      opennote(target, alreadyopen
-        ? { newtab: false, replacecurrent: false }
-        : { newtab: true })
+      clearfileselection()
+      opennote(target, { newtab: true })
     })
   }
 
@@ -1643,20 +1634,16 @@ export async function loadnotes() {
 
       // check if a specific note was requested via query parameter --------------------
       const urlparams = new URLSearchParams(window.location.search)
-      const notetoopen = urlparams.get('open')
+      const pathmatch = window.location.pathname.match(/^\/editor\/(.+)$/)
+      const notetoopen = (pathmatch && pathmatch[1]) ? decodeURIComponent(pathmatch[1]) : urlparams.get('open')
 
       const saved = loadworkspacestate()
       const historyentryok = (id) => isvalidopentab(id, state.allnotes)
 
       if (notetoopen && state.allnotes.some(n => isnoteidmatch(n.note_id, notetoopen))) {
-        if (saved && Array.isArray(saved.opentabs)) {
-          const kept = saved.opentabs.filter(t => isvalidopentab(t, state.allnotes))
-          // set tabs first so history sync cannot truncate against an empty list --------------------
-          state.opentabs = kept
-          restoretabslothistories(saved.tabslothistories, saved.opentabs, kept, historyentryok)
-        }
-        await opennote(notetoopen, { newtab: true, switchfolder: true })
-        window.history.replaceState({}, '', currentworkspacepath())
+        await opennote(notetoopen, { replacecurrent: true, switchfolder: true })
+      } else if (!ismobilemode() && pathmatch) {
+        closenote()
       } else if (saved && saved.opentabs && saved.opentabs.length > 0) {
         let existingtabs = saved.opentabs.filter(t => isvalidopentab(t, state.allnotes))
         // mobile only keeps one tab from a restored desktop session --------------------
@@ -1682,10 +1669,6 @@ export async function loadnotes() {
         }
       } else {
         closenote()
-      }
-        } else {
-          closenote()
-        }
       }
     }
 

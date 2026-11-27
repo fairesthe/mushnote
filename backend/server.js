@@ -130,7 +130,7 @@ app.get('/editor', (req, res) => {
   res.sendFile(path.join(frontenddir, 'editor.html'))
 })
 
-app.get('/editor/*', (req, res) => {
+app.get(/^\/editor\/.*/, (req, res) => {
   res.sendFile(path.join(frontenddir, 'editor.html'))
 })
 
@@ -1313,7 +1313,7 @@ app.post('/api/agent/chat', async (req, res) => {
       history,
       attachments,
       client_info: clientinfo,
-      requestbrowserfetch: (url, timeoutms = 25000) => {
+      requestbrowserfetch: (url, { tabId = null, timeoutms = 25000 } = {}) => {
         const requestId = `bf_${++browserfetchseq}_${Date.now()}`
         return new Promise((resolve, reject) => {
           const timer = setTimeout(() => {
@@ -1321,7 +1321,7 @@ app.post('/api/agent/chat', async (req, res) => {
             reject(new Error('browser fetch timed out (is the mushnote extension installed?)'))
           }, timeoutms)
           pendingbrowserfetches.set(requestId, { resolve, reject, timer })
-          sendevent('browser_fetch', { requestId, url })
+          sendevent('browser_fetch', { requestId, url, tabId })
         })
       },
       onProgress: (event, data) => {

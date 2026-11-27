@@ -113,6 +113,7 @@ export async function saveactiveconversation() {
       updated_at: data.conversation.updated_at,
     }
   }
+  window.postMessage({ type: 'MUSHNOTE_CONV_UPDATED', convId: activeconversationid }, '*')
 }
 
 export function schedulesaveactiveconversation() {
@@ -189,6 +190,7 @@ export async function switchconversation(id) {
   await loadconversationbyid(id)
   setconversationsmode(false)
   renderconversationslist()
+  window.postMessage({ type: 'MUSHNOTE_CONV_UPDATED', convId: id }, '*')
 }
 
 export async function createnewconversation() {
@@ -254,7 +256,8 @@ export async function initconversationstorage() {
     const data = await api('/api/conversations')
     conversationscache = data.conversations || []
 
-    let pickid = localStorage.getItem(activestoragekey())
+    const convparam = new URLSearchParams(window.location.search).get('conv')
+    let pickid = convparam || localStorage.getItem(activestoragekey())
     if (pickid && !conversationscache.some((c) => c.id === pickid)) {
       pickid = null
     }
@@ -301,3 +304,12 @@ export async function initconversationstorage() {
     })
   }
 }
+
+// sync active conversation across open tabs and extension sidebars --------------------
+window.addEventListener('message', (e) => {
+  if (e.source !== window || e.data?.type !== 'MUSHNOTE_CONV_SYNC' || !e.data.convId) return
+  if (isagentchatbusy()) return
+  loadconversationbyid(e.data.convId).then(() => {
+    renderconversationslist()
+  }).catch(() => {})
+})

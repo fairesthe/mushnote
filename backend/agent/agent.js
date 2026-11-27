@@ -513,14 +513,14 @@ export async function runagentchat(prompt, options = {}) {
       break
     }
     iterations += 1
-    const functionresponses = []
-
-    for (const call of response.functionCalls) {
+    const PARALLEL_SAFE_TOOLS = new Set([
+      'web_read_page', 'web_search', 'textfile_read', 'file_search', 'youtube_video', 'api_request'
+    ])
+    const runone = async (call) => {
       log.agent('tool', call.name, formattoolargs(call))
       if (onProgress) {
         onProgress('status', { status: formattoolstatus(call), tool: call.name })
       }
-
       const tooloutput = await executetool(call.name, call.args, {
         vaultdir,
         historydir,
@@ -532,22 +532,21 @@ export async function runagentchat(prompt, options = {}) {
         config: conf,
         requestbrowserfetch: options.requestbrowserfetch,
       })
-
-      toolcallsexecuted.push({
-        name: call.name,
-        args: call.args,
-        output: tooloutput?.__inlinedata ? tooloutput.text : tooloutput
-      })
-
+      const out = tooloutput?.__inlinedata ? tooloutput.text : tooloutput
+      toolcallsexecuted.push({ name: call.name, args: call.args, output: out })
       if (onProgress) {
-        onProgress('tool_call', {
-          name: call.name,
-          args: call.args,
-          output: tooloutput?.__inlinedata ? tooloutput.text : tooloutput
-        })
+        onProgress('tool_call', { name: call.name, args: call.args, output: out })
       }
-
-      functionresponses.push(buildfunctionresponse(call, tooloutput))
+      return buildfunctionresponse(call, tooloutput)
+    }
+    const canparallel = response.functionCalls.length > 1 && response.functionCalls.every(c => PARALLEL_SAFE_TOOLS.has(c.name))
+    let functionresponses = []
+    if (canparallel) {
+      functionresponses = await Promise.all(response.functionCalls.map(runone))
+    } else {
+      for (const call of response.functionCalls) {
+        functionresponses.push(await runone(call))
+      }
     }
 
     // leave the last tool status on screen while the model plans the next turn --------------------
@@ -599,8 +598,10 @@ export async function runagentchat(prompt, options = {}) {
         while (response.functionCalls && response.functionCalls.length > 0) {
           if (iterations >= maxtooliterations) break
           iterations += 1
-          const functionresponses = []
-          for (const call of response.functionCalls) {
+          const PARALLEL_SAFE_TOOLS = new Set([
+            'web_read_page', 'web_search', 'textfile_read', 'file_search', 'youtube_video', 'api_request'
+          ])
+          const runone = async (call) => {
             log.agent('tool', call.name, formattoolargs(call))
             if (onProgress) {
               onProgress('status', { status: formattoolstatus(call), tool: call.name })
@@ -616,20 +617,21 @@ export async function runagentchat(prompt, options = {}) {
               config: conf,
               requestbrowserfetch: options.requestbrowserfetch,
             })
-            toolcallsexecuted.push({
-              name: call.name,
-              args: call.args,
-              output: tooloutput?.__inlinedata ? tooloutput.text : tooloutput
-            })
+            const out = tooloutput?.__inlinedata ? tooloutput.text : tooloutput
+            toolcallsexecuted.push({ name: call.name, args: call.args, output: out })
             if (onProgress) {
-              onProgress('tool_call', {
-                name: call.name,
-                args: call.args,
-                output: tooloutput?.__inlinedata ? tooloutput.text : tooloutput
-              })
+              onProgress('tool_call', { name: call.name, args: call.args, output: out })
             }
-            functionresponses.push(buildfunctionresponse(call, tooloutput))
+            return buildfunctionresponse(call, tooloutput)
           }
+          const canparallel = response.functionCalls.length > 1 && response.functionCalls.every(c => PARALLEL_SAFE_TOOLS.has(c.name))
+          const functionresponses = canparallel
+            ? await Promise.all(response.functionCalls.map(runone))
+            : await (async () => {
+              const res = []
+              for (const call of response.functionCalls) res.push(await runone(call))
+              return res
+            })()
           response = await sendstreamwithretry(functionresponses)
         }
         rawtext = response.text || ''

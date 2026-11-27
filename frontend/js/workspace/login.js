@@ -197,9 +197,12 @@ if (passwordform) {
 }
 
 // boot login screen --------------------
-checkauth()
-initpwainstall()
-initextensioncheck()
+if (ismobiledevice()) {
+  checkauth()
+  initpwainstall()
+} else {
+  initdesktopgate()
+}
 
 // dismiss loading screen once login screen elements populate --------------------
 window.addEventListener('load', () => {
@@ -321,34 +324,32 @@ function initpwainstall() {
   sheetsclose?.addEventListener('click', closesheet)
 }
 
-// desktop extension install prompt --------------------
-function initextensioncheck() {
-  if (ismobiledevice()) return
-
-  const banner = document.getElementById('ext-install-banner')
-  const btnclose = document.getElementById('btn-ext-banner-close')
-  if (!banner || !btnclose) return
-
+// desktop extension gate (no login page without extension) --------------------
+function initdesktopgate() {
+  const picker = document.getElementById('user-picker')
+  const gate = document.getElementById('desktop-ext-gate')
   let detected = false
 
-  function onmessage(e) {
-    if (e.source === window && e.data?.type === 'MUSHNOTE_EXT_READY') {
-      detected = true
-      banner.classList.add('hidden')
-      window.removeEventListener('message', onmessage)
-    }
+  function unlock() {
+    if (detected) return
+    detected = true
+    gate?.classList.add('hidden')
+    picker?.classList.remove('hidden')
+    checkauth()
   }
 
-  window.addEventListener('message', onmessage)
+  window.addEventListener('message', (e) => {
+    if (e.source === window && e.data?.type === 'MUSHNOTE_EXT_READY') {
+      unlock()
+    }
+  })
+
   window.postMessage({ type: 'MUSHNOTE_EXT_PING' }, '*')
 
   setTimeout(() => {
     if (!detected) {
-      banner.classList.remove('hidden')
+      picker?.classList.add('hidden')
+      gate?.classList.remove('hidden')
     }
   }, 250)
-
-  btnclose.addEventListener('click', () => {
-    banner.classList.add('hidden')
-  })
 }

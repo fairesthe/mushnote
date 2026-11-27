@@ -28,8 +28,10 @@ function mapaccenttogroupcolor(accent) {
 // find or create the mushnote tab group in a window --------------------
 async function ensuremushnotegroup(tabid, windowid) {
   try {
+    const tab = await chrome.tabs.get(tabid).catch(() => null)
     const groups = await chrome.tabGroups.query({ windowId: windowid, title: GROUP_TITLE })
     if (groups.length > 0) {
+      if (tab && tab.groupId === groups[0].id) return groups[0].id
       await chrome.tabs.group({ tabIds: [tabid], groupId: groups[0].id })
       return groups[0].id
     }
@@ -40,6 +42,51 @@ async function ensuremushnotegroup(tabid, windowid) {
     return null
   }
 }
+
+// sync injected ai sidebar on external tabs in the mushnote group --------------------
+async function updatesidepanelfortab(tabid, url) {
+  const { mushnoteOrigin, aiDrawerOpen, sidebarWidth, activeConvId } = await chrome.storage.local.get([
+    'mushnoteOrigin', 'aiDrawerOpen', 'sidebarWidth', 'activeConvId'
+  ])
+  const iseditor = Boolean(mushnoteOrigin && url && url.startsWith(`${mushnoteOrigin}/editor`))
+  const tab = await chrome.tabs.get(tabid).catch(() => null)
+  const groups = tab ? await chrome.tabGroups.query({ windowId: tab.windowId, title: GROUP_TITLE }).catch(() => []) : []
+  const inmushnote = Boolean(tab && groups.length > 0 && tab.groupId === groups[0].id)
+
+  if (chrome.contextMenus && tab?.active) {
+    chrome.contextMenus.update('mushnote-ask-ai', { visible: inmushnote }).catch(() => {})
+  }
+
+  chrome.tabs.sendMessage(tabid, {
+    type: 'MUSHNOTE_SIDEBAR_SYNC',
+    enabled: Boolean(mushnoteOrigin && inmushnote && !iseditor),
+    iseditor,
+    open: aiDrawerOpen !== false,
+    width: typeof sidebarWidth === 'number' ? sidebarWidth : 380,
+    origin: mushnoteOrigin || ''
+  }).catch(() => {})
+
+  if (inmushnote && activeConvId) {
+    chrome.tabs.sendMessage(tabid, { type: 'MUSHNOTE_CONV_SYNC', convId: activeConvId }).catch(() => {})
+  }
+}
+
+chrome.tabs.onUpdated.addListener(async (tabid, changeinfo, tab) => {
+  const url = changeinfo.url || tab?.url
+  if (!url && changeinfo.groupId === undefined) return
+  const { mushnoteOrigin } = await chrome.storage.local.get('mushnoteOrigin')
+  if (mushnoteOrigin && url && url.startsWith(`${mushnoteOrigin}/editor`)) {
+    await ensuremushnotegroup(tabid, tab.windowId)
+  }
+  if (changeinfo.groupId !== undefined || changeinfo.url || changeinfo.status === 'complete') {
+    updatesidepanelfortab(tabid, url)
+  }
+})
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  const tab = await chrome.tabs.get(tabId).catch(() => null)
+  if (tab) updatesidepanelfortab(tabId, tab.url)
+})
 
 // toggle or focus mushnote tab on toolbar icon click --------------------
 chrome.action.onClicked.addListener(async (activetab) => {
@@ -99,24 +146,53 @@ function waitfortabload(tabid, timeoutms = 15000) {
   })
 }
 
-// open background tab, extract content, and optionally keep open --------------------
-async function fetchpageinbackground(url, { keepOpen = false, active = false } = {}) {
-  const tab = await chrome.tabs.create({ url, active })
-  await ensuremushnotegroup(tab.id, tab.windowId)
-  await waitfortabload(tab.id)
+// open background tab (or reuse existing mushnote tab), extract content, and optionally keep open --------------------
+async function fetchpageinbackground(url, { keepOpen = false, active = false, tabId = null } = {}) {
+  let reused = false
+  let tab = null
+  if (tabId) {
+    tab = await chrome.tabs.get(tabId)
+    reused = true
+  } else {
+    const existing = (await listmushnotetabs()).find((t) => {
+      try {
+        const a = new URL(t.url)
+        const b = new URL(url)
+        return a.origin === b.origin && a.pathname.replace(/\/+$/, '') === b.pathname.replace(/\/+$/, '') && a.search === b.search
+      } catch {
+        return t.url === url
+      }
+    })
+    reused = Boolean(existing)
+    tab = reused
+      ? await chrome.tabs.get(existing.id)
+      : await chrome.tabs.create({ url, active })
+  }
+
+  if (!reused) {
+    await ensuremushnotegroup(tab.id, tab.windowId)
+    await waitfortabload(tab.id)
+  }
 
   try {
     const results = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: async () => {
-        // stepped scroll to trigger intersectionobserver lazy-loading --------------------
-        const step = Math.max(300, window.innerHeight || 600)
-        const maxh = Math.min(document.body?.scrollHeight || 0, 8000)
-        for (let y = 0; y < maxh; y += step) {
-          window.scrollTo(0, y)
-          await new Promise(r => setTimeout(r, 80))
+      target: { tabId: tab.id, allFrames: true },
+      args: [reused],
+      func: async (isreused) => {
+        const istop = window.top === window
+        const originaltitle = document.title || ''
+        if (istop && !isreused && !originaltitle.startsWith('READ: ')) {
+          document.title = `READ: ${originaltitle}`
         }
-        window.scrollTo(0, 0)
+        // only scroll if page looks sparse/lazy-loaded --------------------
+        if ((document.body?.innerText || '').trim().length < 400) {
+          const step = Math.max(500, window.innerHeight || 600)
+          for (let i = 1; i <= 3; i++) {
+            window.scrollTo(0, step * i)
+            await new Promise(r => setTimeout(r, 40))
+          }
+          window.scrollTo(0, 0)
+        }
 
         const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'SVG', 'NAV', 'FOOTER', 'HEADER', 'ASIDE', 'BUTTON', 'FORM', 'DIALOG'])
         const TRACKING_PARAMS = [
@@ -157,6 +233,16 @@ async function fetchpageinbackground(url, { keepOpen = false, active = false } =
           const tag = node.tagName
           const children = () => Array.from(node.childNodes).map(walk).join('')
 
+          if (tag === 'IMG') {
+            const src = node.currentSrc || node.getAttribute('src') || ''
+            if (!src || src.startsWith('data:')) return ''
+            const rect = node.getBoundingClientRect()
+            if ((rect.width > 0 && rect.width <= 24) || (rect.height > 0 && rect.height <= 24)) return ''
+            const cleaned = cleanurl(node.src || src)
+            if (cleaned.length > 300) return ''
+            const alt = (node.getAttribute('alt') || '').replace(/\s+/g, ' ').trim() || 'image'
+            return `![${alt}](${cleaned})`
+          }
           if (/^H[1-6]$/.test(tag)) {
             const level = '#'.repeat(Number(tag[1]))
             const text = children().replace(/\s+/g, ' ').trim()
@@ -211,32 +297,49 @@ async function fetchpageinbackground(url, { keepOpen = false, active = false } =
         const iconlink = document.querySelector('link[rel~="icon"]')
         return {
           url: cleanurl(window.location.href),
-          title: document.title || '',
+          title: originaltitle,
           icon: iconlink?.href || `${window.location.origin}/favicon.ico`,
           truncated,
           content: markdown
         }
       }
     })
-    const result = results?.[0]?.result || { url, title: '', content: '' }
-    return { ...result, tabId: tab.id, keptOpen: Boolean(keepOpen) }
+    const main = results?.find(r => r.frameId === 0)?.result || results?.[0]?.result || { url, title: '', content: '' }
+    const widgets = (results || [])
+      .filter(r => r.frameId !== 0 && r.result?.content && !String(r.result.url || '').startsWith('chrome-extension://'))
+      .map(r => r.result)
+
+    let combined = main.content || ''
+    if (widgets.length > 0) {
+      const widgetblocks = widgets.map(w => `### Widget: ${w.title || w.url}\n\n${w.content}`)
+      combined = `${combined}\n\n---\n\n## Embedded Widgets\n\n${widgetblocks.join('\n\n---\n\n')}`.trim()
+      if (combined.length > 25000) {
+        const cut = combined.lastIndexOf('\n', 25000)
+        combined = combined.slice(0, cut > 0 ? cut : 25000).trim() + '\n\n[truncated]'
+        main.truncated = true
+      }
+    }
+    return { ...main, content: combined, tabId: tab.id, keptOpen: Boolean(keepOpen || reused) }
   } finally {
-    if (!keepOpen) {
+    if (!keepOpen && !reused) {
       chrome.tabs.remove(tab.id).catch(() => {})
     }
   }
 }
 
-// open or focus a tab in the mushnote group --------------------
+// open, navigate, or focus a tab in the mushnote group --------------------
 async function openmushnotetab({ tabId, url, active = true } = {}) {
   if (tabId) {
-    const tab = await chrome.tabs.update(tabId, { active })
+    const updateprops = url ? { url, active } : { active }
+    const tab = await chrome.tabs.update(tabId, updateprops)
     await ensuremushnotegroup(tab.id, tab.windowId)
-    return { id: tab.id, url: tab.url || '', title: tab.title || '', active: Boolean(tab.active) }
+    await updatesidepanelfortab(tab.id, tab.url || url)
+    return { id: tab.id, url: tab.url || url || '', title: tab.title || '', active: Boolean(tab.active) }
   }
   if (url) {
     const tab = await chrome.tabs.create({ url, active })
     await ensuremushnotegroup(tab.id, tab.windowId)
+    await updatesidepanelfortab(tab.id, tab.url || url)
     return { id: tab.id, url: tab.url || url, title: tab.title || '', active: Boolean(tab.active) }
   }
   throw new Error('tabId or url required')
@@ -268,10 +371,43 @@ async function listmushnotetabs() {
   return all
 }
 
+// context menu: ask <ai name> on highlighted text --------------------
+function ensurecontextmenu(ainame = 'AI') {
+  if (!chrome.contextMenus) return
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: 'mushnote-ask-ai',
+      title: `Ask ${ainame}`,
+      contexts: ['selection']
+    })
+  })
+}
+
+chrome.runtime.onInstalled.addListener(async () => {
+  const { aiName } = await chrome.storage.local.get('aiName')
+  ensurecontextmenu(aiName || 'AI')
+})
+
+if (chrome.contextMenus) {
+  chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    if (info.menuItemId !== 'mushnote-ask-ai' || !info.selectionText || !tab?.id) return
+    const payload = {
+      type: 'MUSHNOTE_ASK_SELECTION',
+      text: info.selectionText,
+      url: tab.url || '',
+      title: tab.title || ''
+    }
+    await chrome.storage.local.set({ aiDrawerOpen: true, pendingAskSelection: payload }).catch(() => {})
+    await ensuremushnotegroup(tab.id, tab.windowId)
+    await updatesidepanelfortab(tab.id, tab.url)
+    chrome.tabs.sendMessage(tab.id, payload).catch(() => {})
+  })
+}
+
 // handle messages from content script --------------------
-chrome.runtime.onMessage.addListener((msg, _sender, sendresponse) => {
-  if (msg?.type === 'MUSHNOTE_FETCH_PAGE' && msg.url) {
-    fetchpageinbackground(msg.url, { keepOpen: msg.keepOpen, active: msg.active })
+chrome.runtime.onMessage.addListener((msg, sender, sendresponse) => {
+  if (msg?.type === 'MUSHNOTE_FETCH_PAGE' && (msg.url || msg.tabId)) {
+    fetchpageinbackground(msg.url, { keepOpen: msg.keepOpen, active: msg.active, tabId: msg.tabId })
       .then(data => sendresponse({ ok: true, data }))
       .catch(err => sendresponse({ ok: false, error: err?.message || 'fetch failed' }))
     return true
@@ -301,6 +437,64 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendresponse) => {
   if (msg?.type === 'MUSHNOTE_REGISTER_ORIGIN' && msg.origin) {
     chrome.storage.local.set({ mushnoteOrigin: msg.origin }).catch(() => {})
     chrome.action.setPopup({ popup: '' }).catch(() => {})
+    if (sender?.tab?.id && sender.tab.url?.startsWith(`${msg.origin}/editor`)) {
+      ensuremushnotegroup(sender.tab.id, sender.tab.windowId)
+    } else if (sender?.tab?.id) {
+      updatesidepanelfortab(sender.tab.id, sender.tab.url)
+    }
+    return false
+  }
+
+  if (msg?.type === 'MUSHNOTE_SET_AI_OPEN') {
+    const open = Boolean(msg.open)
+    chrome.storage.local.set({ aiDrawerOpen: open }).catch(() => {})
+    listmushnotetabs().then((tabs) => {
+      for (const t of tabs) updatesidepanelfortab(t.id, t.url)
+    }).catch(() => {})
+    return false
+  }
+
+  if (msg?.type === 'MUSHNOTE_SET_AI_WIDTH' && typeof msg.width === 'number') {
+    chrome.storage.local.set({ sidebarWidth: msg.width }).catch(() => {})
+    listmushnotetabs().then((tabs) => {
+      for (const t of tabs) {
+        if (t.id !== sender?.tab?.id) updatesidepanelfortab(t.id, t.url)
+      }
+    }).catch(() => {})
+    return false
+  }
+
+  if (msg?.type === 'MUSHNOTE_CONV_UPDATED' && msg.convId) {
+    chrome.storage.local.set({ activeConvId: msg.convId }).catch(() => {})
+    listmushnotetabs().then((tabs) => {
+      for (const t of tabs) {
+        if (t.id !== sender?.tab?.id) {
+          chrome.tabs.sendMessage(t.id, { type: 'MUSHNOTE_CONV_SYNC', convId: msg.convId }).catch(() => {})
+        }
+      }
+    }).catch(() => {})
+    return false
+  }
+
+  if (msg?.type === 'MUSHNOTE_SET_AI_NAME' && msg.name) {
+    chrome.storage.local.set({ aiName: msg.name }).catch(() => {})
+    ensurecontextmenu(msg.name)
+    return false
+  }
+
+  if (msg?.type === 'MUSHNOTE_GET_PANEL_CONFIG') {
+    chrome.storage.local.get(['mushnoteOrigin', 'activeConvId']).then(async ({ mushnoteOrigin, activeConvId }) => {
+      if (!mushnoteOrigin) return sendresponse({ origin: '', token: '', convId: '' })
+      const cookie = chrome.cookies
+        ? await chrome.cookies.get({ url: mushnoteOrigin, name: 'mushnote_session' }).catch(() => null)
+        : null
+      sendresponse({ origin: mushnoteOrigin, token: cookie?.value || '', convId: activeConvId || '' })
+    }).catch(() => sendresponse({ origin: '', token: '', convId: '' }))
+    return true
+  }
+
+  if (msg?.type === 'MUSHNOTE_CHECK_SIDEBAR' && sender?.tab?.id) {
+    updatesidepanelfortab(sender.tab.id, sender.tab.url)
     return false
   }
 

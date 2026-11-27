@@ -14,9 +14,20 @@ import { opennote } from '../editor/editor.js'
 
 // freeze mobile vs desktop from the url before any layout work --------------------
 applymobileboot()
+const bootparams = new URLSearchParams(window.location.search)
+if (bootparams.get('panel') === 'ai') {
+  document.body.classList.add('ai-panel-only')
+}
+const paneltoken = bootparams.get('token')
+if (paneltoken) {
+  localStorage.setItem('mushnote_token', paneltoken)
+  bootparams.delete('token')
+  const qs = bootparams.toString()
+  window.history.replaceState({}, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`)
+}
 
 // register service worker for pwa installability --------------------
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && !document.body.classList.contains('ai-panel-only')) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {})
   })

@@ -1,6 +1,6 @@
 import { api, resolveaccent } from '../core/api.js'
 import { ismobilemode } from '../core/mobile.js'
-import { isextensionconnected, listmushnotetabs, openmushnotetab, closemushnotetab } from '../core/extension.js'
+import { isextensionconnected, listmushnotetabs, openmushnotetab, closemushnotetab, fetchpageviaextension } from '../core/extension.js'
 import { state } from '../core/state.js'
 import { loadnotes, navigatefolder, clearalldraghighlights, getfileicon } from '../workspace/files.js'
 import {
@@ -620,6 +620,7 @@ export async function loadaiinfo() {
     if (aiuser) {
       state.aiuserid = aiuser.id || aiuser.username || 'ai'
       state.ainame = aiuser.name || 'assistant'
+      window.postMessage({ type: 'MUSHNOTE_AI_NAME', name: state.ainame }, '*')
       state.aiavatar = aiuser.avatar || null
       if (aiuser.avatar) {
         state.useravatarmap[state.aiuserid] = aiuser.avatar
@@ -656,7 +657,7 @@ const tooliconmap = {
   youtube_video: '/resources/icons/tools/tool-youtube-video.png',
   textfile_read: '/resources/icons/tools/tool-textfile-read.png',
   file_analyze: '/resources/icons/tools/tool-file-analyze.png',
-  file_open_for_user: '/resources/icons/tools/tool-file-open-for-user.png',
+  tab_manage: '/resources/icons/tools/tool-tab-manage.png',
   textfile_create: '/resources/icons/tools/tool-textfile-create.png',
   file_move: '/resources/icons/tools/tool-file-move.png',
   file_copy: '/resources/icons/tools/tool-file-copy.png',
@@ -1557,9 +1558,9 @@ export async function senduserprompt(text) {
               rawreplytext = parsed.full || (rawreplytext + (parsed.delta || ''))
               renderbufferedreply(rawreplytext)
             } else if (eventname === 'browser_fetch') {
-              const { requestId, url } = data || {}
-              if (requestId && url) {
-                fetchpageviaextension(url)
+              const { requestId, url, tabId } = parsed || {}
+              if (requestId && (url || tabId)) {
+                fetchpageviaextension(url, { tabId })
                   .then((result) => fetch('/api/agent/browser-result', {
                     method: 'POST',
                     credentials: 'same-origin',
@@ -1645,6 +1646,11 @@ export async function senduserprompt(text) {
               const act = String(call.args?.action || 'open').toLowerCase()
               if (act === 'focus' && call.args?.tab_id) {
                 openmushnotetab({ tabId: call.args.tab_id, active: true }).catch(() => {})
+              } else if (act === 'navigate' && call.args?.tab_id) {
+                const targeturl = call.args.url || (call.args.path ? `${window.location.origin}/editor/${encodeURI(call.args.path)}` : null)
+                if (targeturl) {
+                  openmushnotetab({ tabId: call.args.tab_id, url: targeturl, active: true }).catch(() => {})
+                }
               } else if (act === 'close' && call.args?.tab_id) {
                 closemushnotetab(call.args.tab_id).catch(() => {})
               } else if (act === 'open' && call.args?.url) {
@@ -2324,3 +2330,15 @@ export function initassistant() {
     })
   }
 }
+
+// accept highlighted selection references from the chrome extension context menu --------------------
+window.addEventListener('message', (e) => {
+  if (e.source !== window || e.data?.type !== 'MUSHNOTE_ASK_SELECTION' || !e.data.text) return
+  addreferenceattachment({
+    refKind: 'selection',
+    path: e.data.url || 'webpage',
+    name: e.data.title || e.data.url || 'selection',
+    text: e.data.text
+  })
+  if (aiinput) aiinput.focus()
+})

@@ -193,6 +193,12 @@ export function closenote() {
 
 // open note in center wysiwyg editor --------------------
 export async function opennote(noteid, options = {}) {
+  const opts = typeof options === 'boolean' ? { force: options } : (options || {})
+  if (!ismobilemode() && opts.newtab && !noteid.startsWith('preview:')) {
+    window.open(`/editor/${encodeURI(noteid)}`, '_blank')
+    return
+  }
+
   window.dispatchEvent(new CustomEvent('mushnote-history-close'))
   // drop any open context menus when switching tabs or notes --------------------
   closecontextmenu()
@@ -228,7 +234,6 @@ export async function opennote(noteid, options = {}) {
   } else {
     document.title = `${tabname} - mushnote`
   }
-  const opts = typeof options === 'boolean' ? { force: options } : (options || {})
   let {
     newtab = false,
     replacecurrent = true,
@@ -241,10 +246,6 @@ export async function opennote(noteid, options = {}) {
   if (mobile) {
     newtab = false
     replacecurrent = true
-  } else if (newtab && !ispreview) {
-    // open in a new browser tab on desktop --------------------
-    window.open(`/editor/${encodeURI(noteid)}`, '_blank')
-    return
   } else if (!ispreview) {
     window.history.replaceState({}, '', `/editor/${encodeURI(noteid)}`)
   }

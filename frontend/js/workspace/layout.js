@@ -12,6 +12,20 @@ const tabtoggleai = document.getElementById('tab-toggle-ai')
 const btncloseai = document.getElementById('btn-close-ai')
 const aiinput = document.getElementById('ai-input')
 
+function aiwidthstoragekey() {
+  const userid = state.currentuser?.id || 'anon'
+  return `mushnote_ai_width_${userid}`
+}
+
+function restoreaiwidth() {
+  if (!aidrawer) return
+  const saved = Number(localStorage.getItem(aiwidthstoragekey()))
+  if (!saved || saved < 220 || saved > 720) return
+  aidrawer.style.width = `${saved}px`
+  aidrawer.style.minWidth = `${saved}px`
+  document.documentElement.style.setProperty('--ai-drawer-width', `${saved}px`)
+}
+
 function aidrawerstoragekey() {
   const userid = state.currentuser?.id || 'anon'
   return `mushnote_ai_open_${userid}`
@@ -26,6 +40,7 @@ function saveaidraweropen() {
   if (!aidrawer) return
   const open = !aidrawer.classList.contains('is-collapsed')
   localStorage.setItem(aidrawerstoragekey(), open ? '1' : '0')
+  window.postMessage({ type: 'MUSHNOTE_AI_STATE', open }, '*')
 }
 
 function savesidebaropen() {
@@ -157,7 +172,30 @@ export function initlayout() {
 
   restoresidebaropen()
   restoreaidraweropen()
+  restoreaiwidth()
+  if (document.body.classList.contains('ai-panel-only') && aidrawer) {
+    aidrawer.classList.remove('is-collapsed')
+    if (aiinput) setTimeout(() => aiinput.focus(), 50)
+  }
   updatetogglebuttons()
+
+  // sync ai drawer open/width from extension across all tabs --------------------
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || e.data?.type !== 'MUSHNOTE_AI_STATE_SYNC' || !aidrawer) return
+    if (!document.body.classList.contains('ai-panel-only') && typeof e.data.open === 'boolean') {
+      aidrawer.classList.toggle('is-collapsed', !e.data.open)
+      localStorage.setItem(aidrawerstoragekey(), e.data.open ? '1' : '0')
+      updatetogglebuttons()
+    }
+    if (typeof e.data.width === 'number' && e.data.width >= 220 && e.data.width <= 720) {
+      localStorage.setItem(aiwidthstoragekey(), String(e.data.width))
+      if (!document.body.classList.contains('ai-panel-only')) {
+        aidrawer.style.width = `${e.data.width}px`
+        aidrawer.style.minWidth = `${e.data.width}px`
+        document.documentElement.style.setProperty('--ai-drawer-width', `${e.data.width}px`)
+      }
+    }
+  })
 
   // sync sidebar and ai drawer state across open tabs --------------------
   window.addEventListener('storage', (e) => {
@@ -211,6 +249,7 @@ export function initlayout() {
 
   function stopresizing() {
     if (isresizingleft || isresizingright) {
+      const wasright = isresizingright
       isresizingleft = false
       isresizingright = false
       if (resizerleft) resizerleft.classList.remove('is-dragging')
@@ -218,6 +257,13 @@ export function initlayout() {
       document.body.classList.remove('is-resizing')
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
+      if (wasright && aidrawer) {
+        const w = parseInt(aidrawer.style.width, 10)
+        if (w >= 220 && w <= 720) {
+          localStorage.setItem(aiwidthstoragekey(), String(w))
+          window.postMessage({ type: 'MUSHNOTE_AI_WIDTH', width: w }, '*')
+        }
+      }
     }
   }
 

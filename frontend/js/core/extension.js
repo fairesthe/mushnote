@@ -47,7 +47,7 @@ export function getextensionversion() {
 }
 
 // fetch a page via the extension background tab runner --------------------
-export function fetchpageviaextension(url, { keepOpen = false, active = false, timeoutms = 20000 } = {}) {
+export function fetchpageviaextension(url, { keepOpen = false, active = false, tabId = null, timeoutms = 20000 } = {}) {
   if (!extready) {
     return Promise.reject(new Error('mushnote extension is not connected'))
   }
@@ -60,7 +60,7 @@ export function fetchpageviaextension(url, { keepOpen = false, active = false, t
     }, timeoutms)
 
     pending.set(requestId, { resolve, reject, timer })
-    window.postMessage({ type: 'MUSHNOTE_FETCH_PAGE', requestId, url, keepOpen, active }, '*')
+    window.postMessage({ type: 'MUSHNOTE_FETCH_PAGE', requestId, url, tabId, keepOpen, active }, '*')
   })
 }
 

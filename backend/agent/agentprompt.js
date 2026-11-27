@@ -2,9 +2,9 @@
 
 const mushnotecore = `How mushnote works:
 - vault files on disk (.md, .txt, code, yaml, etc.) with versioned history
-- collaborative editor: tabs, ==highlight==, latex, gfm tables, note links ([label](path.md) or [[path]])
+- collaborative editor: browser tabs in the "mushnote" tab group (/editor/<path> and web pages listed in open tabs), ==highlight==, latex, gfm tables, note links ([label](path.md) or [[path]])
 - you edit via tools; changes stream live with your avatar
-- for questions about how mushnote works, its extension, or setup, read \`!special/mushnote-info.md\``
+- for questions about how mushnote works, its extension, or setup, call textfile_read with path "!special/mushnote-info.md" (do not file_search for it)`
 
 function jobssection(userid) {
   const user = userid || '<userid>'
@@ -27,6 +27,8 @@ const toolrouting = `Tool routing (follow this map):
 - chat file uploads land in media/chat-uploads/ as path refs — call file_analyze only if you need to examine them; otherwise move or markdown-link the path into a note
 - chat uploads that are .zip .jar .7z or .rar: archive_extract when the user wants them unpacked
 - user gave https url (not youtube): web_read_page on that url first, not web_search
+- digging into a site: call web_read_page in parallel on multiple interesting links from the page in one turn
+- if web_read_page hits a login wall, captcha, or anti-bot block: call tab_manage (action=open, url) so the user can load it, then read it with web_read_page(tab_id) once they confirm
 - save a remote file or clone a public git repo into the vault: download (destination = vault path or folder)
 - call a json or http api (GET/POST/etc): api_request (not web_read_page, not download)
 - youtube or youtu.be: youtube_video only (never web_read_page, web_search, download, or api_request for video Q and A)
@@ -61,7 +63,7 @@ const editorrules = `File edits:
 - invoke real tools via the api only, never write s_call, default_api, or brace tool syntax in the reply
 - execute tools before conversational text when user asks to change files
 - textfile_edit_diff modes: replace, insert_after, insert_before, delete, append; batch with edits array
-- textfile_create for new files; file_open_for_user when user asks to open a file
+- textfile_create for new files; tab_manage when user asks to open, focus, or close a tab or url
 - read truncated active note via textfile_read before claiming content is missing
 - vault note content must be clean markdown only (no chat cite pills, no raw html)
 - in text or notes, prefer standard unicode symbols like arrows (→ or -->) over math-mode arrows, or ensure latex commands are fully escaped (\\rightarrow, never dropped backslashes like ightarrow)
@@ -114,7 +116,15 @@ export function buildsystemprompt(options = {}) {
   const active = activeuser ? activeuser.name || activeuser.id : 'unknown'
   const activeuserid = activeuser?.id || 'user'
   const userlist = allusers.map((u) => u.name || u.id).join(', ')
-  const tabslist = opentabs.length > 0 ? ` | open tabs: [${opentabs.join(', ')}]` : ''
+  const formattedtabs = opentabs.map((t) => {
+    if (typeof t === 'string') return t
+    if (t && typeof t === 'object') {
+      const prefix = t.active ? '*' : ''
+      return `${prefix}${t.id}:${t.title || t.url} (${t.url})`
+    }
+    return String(t)
+  })
+  const tabslist = formattedtabs.length > 0 ? ` | open tabs: [${formattedtabs.join(', ')}]` : ''
   const ispreview = Boolean(activenoteid && activenoteid.startsWith('preview:'))
   const currentnote = activenoteid
     ? (ispreview
