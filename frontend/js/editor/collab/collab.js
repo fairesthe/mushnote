@@ -313,7 +313,45 @@ function unbindcollab() {
     ed.cmundomanager.destroy()
     ed.cmundomanager = null
   }
+  if (ed.rawsyncunsub) {
+    try { ed.rawsyncunsub() } catch {}
+    ed.rawsyncunsub = null
+  }
   ed.collabbound = null
+}
+
+function bindrawrichsync(provider, noteid) {
+  let timer = null
+  const onupdate = (_u, origin) => {
+    if (origin === provider) return
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(async () => {
+      timer = null
+      if (ed.collabprovider !== provider || !ed.cmview) return
+      try {
+        const res = await fetch(`/api/note?id=${encodeURIComponent(noteid)}`, { credentials: 'same-origin' })
+        if (!res.ok) return
+        const data = await res.json()
+        const next = data?.note?.content
+        if (typeof next === 'string' && next !== ed.cmview.state.doc.toString()) {
+          const sel = ed.cmview.state.selection.main
+          ed.isremoteapplying = true
+          ed.cmview.dispatch({
+            changes: { from: 0, to: ed.cmview.state.doc.length, insert: next },
+            selection: { anchor: Math.min(sel.anchor, next.length), head: Math.min(sel.head, next.length) }
+          })
+          setTimeout(() => { ed.isremoteapplying = false }, 30)
+        }
+      } catch {}
+    }, 150)
+  }
+  provider.doc.on('update', onupdate)
+  ed.rawsyncunsub = () => {
+    if (timer) clearTimeout(timer)
+    provider.doc.off('update', onupdate)
+  }
+  ed.collabbound = 'raw-rich'
+  return true
 }
 
 function bindactiveeditor(provider) {
@@ -321,9 +359,13 @@ function bindactiveeditor(provider) {
   if (!active || active.startsWith('preview:') || ishistorypreviewactive()) return
   if (!isnoteidmatch(provider.noteid, active)) return
 
+  const isplainview = document.getElementById('editor-container')?.classList.contains('plain-mode')
   let bound = false
-  if (provider.kind === 'rich' && ismarkdownfile(active)) bound = bindtiptapcollab(provider)
-  else if (provider.kind === 'text' && !ismarkdownfile(active)) bound = bindcmcollab(provider)
+  if (provider.kind === 'rich' && ismarkdownfile(active)) {
+    bound = isplainview ? bindrawrichsync(provider, active) : bindtiptapcollab(provider)
+  } else if (provider.kind === 'text' && !ismarkdownfile(active)) {
+    bound = bindcmcollab(provider)
+  }
   if (!bound) return
 
   if (ed.collablocktimer) {

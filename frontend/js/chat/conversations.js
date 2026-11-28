@@ -190,6 +190,7 @@ export async function switchconversation(id) {
   await loadconversationbyid(id)
   setconversationsmode(false)
   renderconversationslist()
+  window.postMessage({ type: 'MUSHNOTE_CONV_UPDATED', convId: rec.id }, '*')
   window.postMessage({ type: 'MUSHNOTE_CONV_UPDATED', convId: id }, '*')
 }
 
@@ -216,6 +217,7 @@ export async function createnewconversation() {
   })
   setconversationsmode(false)
   renderconversationslist()
+  window.postMessage({ type: 'MUSHNOTE_CONV_UPDATED', convId: rec.id }, '*')
   // jump straight to compose --------------------
   requestAnimationFrame(() => {
     const input = document.getElementById('ai-input')
@@ -236,6 +238,7 @@ async function deleteconversationbyid(id) {
   if (activeconversationid === id) {
     if (conversationscache.length > 0) {
       await loadconversationbyid(conversationscache[0].id)
+      window.postMessage({ type: 'MUSHNOTE_CONV_UPDATED', convId: conversationscache[0].id }, '*')
     } else {
       await createnewconversation()
     }
@@ -282,6 +285,9 @@ export async function initconversationstorage() {
 
     await loadconversationbyid(pickid)
     renderconversationslist()
+    if (convparam && pickid !== convparam) {
+      window.postMessage({ type: 'MUSHNOTE_CONV_UPDATED', convId: pickid }, '*')
+    }
   } catch (err) {
     console.error('conversation init failed', err)
   }
@@ -312,5 +318,9 @@ window.addEventListener('message', (e) => {
   if (e.data.convId === activeconversationid && !e.data.force) return
   loadconversationbyid(e.data.convId).then(() => {
     renderconversationslist()
-  }).catch(() => {})
+  }).catch(() => {
+    if (activeconversationid) {
+      window.postMessage({ type: 'MUSHNOTE_CONV_UPDATED', convId: activeconversationid }, '*')
+    }
+  })
 })

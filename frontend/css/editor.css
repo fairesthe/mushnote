@@ -29,6 +29,15 @@
   position: relative;
 }
 
+/* leave room for floating side tab toggles when sidebars are collapsed -------------------- */
+.editor-pane:has(#tab-toggle-files.panel-closed) .editor-toolbar {
+  padding-left: 42px;
+}
+
+.editor-pane:has(#tab-toggle-ai.panel-closed) .editor-toolbar {
+  padding-right: 112px;
+}
+
 .editor-toolbar::-webkit-scrollbar {
   height: 4px;
 }

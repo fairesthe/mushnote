@@ -26,19 +26,24 @@ function mapaccenttogroupcolor(accent) {
 }
 
 // find or create the mushnote tab group in a window --------------------
-async function ensuremushnotegroup(tabid, windowid) {
+async function ensuremushnotegroup(tabid, windowid, retries = 5) {
   try {
     const tab = await chrome.tabs.get(tabid).catch(() => null)
-    const groups = await chrome.tabGroups.query({ windowId: windowid, title: GROUP_TITLE })
+    if (!tab) return null
+    const groups = await chrome.tabGroups.query({ windowId: tab.windowId, title: GROUP_TITLE })
     if (groups.length > 0) {
-      if (tab && tab.groupId === groups[0].id) return groups[0].id
+      if (tab.groupId === groups[0].id) return groups[0].id
       await chrome.tabs.group({ tabIds: [tabid], groupId: groups[0].id })
       return groups[0].id
     }
-    const groupid = await chrome.tabs.group({ tabIds: [tabid], createProperties: { windowId: windowid } })
+    const groupid = await chrome.tabs.group({ tabIds: [tabid], createProperties: { windowId: tab.windowId } })
     await chrome.tabGroups.update(groupid, { title: GROUP_TITLE, color: groupcolor })
     return groupid
   } catch {
+    if (retries > 0) {
+      await new Promise(r => setTimeout(r, 250))
+      return ensuremushnotegroup(tabid, windowid, retries - 1)
+    }
     return null
   }
 }
@@ -85,6 +90,15 @@ chrome.tabs.onUpdated.addListener(async (tabid, changeinfo, tab) => {
 
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   const tab = await chrome.tabs.get(tabId).catch(() => null)
+  if (tab) updatesidepanelfortab(tabId, tab.url)
+})
+
+chrome.tabs.onAttached.addListener(async (tabId, { newWindowId }) => {
+  const tab = await chrome.tabs.get(tabId).catch(() => null)
+  const { mushnoteOrigin } = await chrome.storage.local.get('mushnoteOrigin')
+  if (tab?.url && mushnoteOrigin && tab.url.startsWith(`${mushnoteOrigin}/editor`)) {
+    await ensuremushnotegroup(tabId, newWindowId)
+  }
   if (tab) updatesidepanelfortab(tabId, tab.url)
 })
 

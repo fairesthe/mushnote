@@ -90,6 +90,10 @@ function showtexteditor(ismd) {
   editortoolbar?.classList.toggle('hidden', !ismd)
   tiptapeditorcontainer?.classList.toggle('hidden', !ismd)
   plaineditorwrap?.classList.toggle('hidden', ismd)
+  const btnswitch = document.getElementById('btn-switch-editor')
+  if (btnswitch) {
+    btnswitch.classList.toggle('hidden', ismd || !ismarkdownfile(state.activenoteid))
+  }
 }
 
 // deleted notes have no file to open so just set up an empty read only editor --------------------
@@ -387,7 +391,7 @@ export async function opennote(noteid, options = {}) {
       bindfiledownloadonce()
       connectnotesocket(noteid)
     } else {
-      const ismd = ismarkdownfile(noteid)
+      const ismd = ismarkdownfile(noteid) && !opts.raw
       showtexteditor(ismd)
       const currentcontent = data.note.content || ''
       const seendata = getspotseen(noteid)
@@ -475,3 +479,14 @@ inittoolbartips()
 bindeditorcursorscroll()
 bindfiledownloadonce()
 import('./history/history-viewer.js').then((m) => m.inithistoryviewer()).catch(() => {})
+
+// toggle between rich markdown editor and raw codemirror view --------------------
+document.getElementById('btn-view-raw')?.addEventListener('click', () => {
+  if (!state.activenoteid || !ismarkdownfile(state.activenoteid)) return
+  opennote(state.activenoteid, { replacecurrent: true, switchfolder: false, raw: true })
+})
+
+document.getElementById('btn-switch-editor')?.addEventListener('click', () => {
+  if (!state.activenoteid || !ismarkdownfile(state.activenoteid)) return
+  opennote(state.activenoteid, { replacecurrent: true, switchfolder: false, raw: false })
+})
